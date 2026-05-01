@@ -1,11 +1,11 @@
 // Generate a real sample inspection report using the actual document pipeline.
-// Reads the first seeded device + inserts a sample inspection record, then
-// calls generateDocx() / generatePdf() directly (no R2 upload) and writes the
-// artifacts under docs/book/assets/sample-report/.
+// Reads the first seeded device + inspector, then calls generateDocx() /
+// generatePdf() directly (no R2 upload) and writes the artifacts under
+// docs/book/assets/sample-report/.
 
 import { writeFile, mkdir } from "node:fs/promises"
 import { join } from "node:path"
-import { eq } from "drizzle-orm"
+import { eq, and, isNull } from "drizzle-orm"
 import { db, schema } from "../src/lib/db"
 import { generateDocx } from "../src/lib/documents/docx"
 import { generatePdf } from "../src/lib/documents/pdf"
@@ -16,7 +16,11 @@ async function main() {
   const org = orgs[0]
   if (!org) throw new Error("no organization seeded; run pnpm seed:dev first")
 
-  const devices = await db.select().from(schema.devices).where(eq(schema.devices.tenantId, org.id)).limit(1)
+  const devices = await db
+    .select()
+    .from(schema.devices)
+    .where(eq(schema.devices.tenantId, org.id))
+    .limit(1)
   const device = devices[0]
   if (!device) throw new Error("no device seeded")
 
@@ -28,6 +32,32 @@ async function main() {
   const inspector = inspectors.find((u) => u.role === "INSPECTOR")
   if (!inspector) throw new Error("no inspector seeded")
 
+  // Pull the active manager (validTo IS NULL) — Group 5 of the form
+  const managers = await db
+    .select()
+    .from(schema.deviceManagers)
+    .where(
+      and(
+        eq(schema.deviceManagers.tenantId, org.id),
+        eq(schema.deviceManagers.deviceId, device.id),
+        isNull(schema.deviceManagers.validTo),
+      ),
+    )
+    .limit(1)
+  const activeManager = managers[0]
+
+  // hasChange = true when more than one manager record exists for this device
+  const allManagers = await db
+    .select()
+    .from(schema.deviceManagers)
+    .where(
+      and(
+        eq(schema.deviceManagers.tenantId, org.id),
+        eq(schema.deviceManagers.deviceId, device.id),
+      ),
+    )
+  const hasChange = allManagers.length > 1
+
   const data: InspectionReportData = {
     organization: { name: org.name, contactEmail: org.contactEmail },
     device: {
@@ -35,13 +65,22 @@ async function main() {
       model: device.model,
       serial: device.serial,
       location: device.location,
+      manufacturedAt: device.manufacturedAt,
+      purchasedAt: device.purchasedAt,
       expiresAt: device.expiresAt,
-      padReplaceAt: device.padReplaceAt
+      padReplaceAt: device.padReplaceAt,
+      batteryReplaceAt: device.batteryReplaceAt,
+      available24h: device.available24h,
     },
     inspector: {
       name: inspector.name,
       email: inspector.email,
-      phone: inspector.phone
+      phone: inspector.phone,
+    },
+    manager: {
+      name: activeManager?.name ?? null,
+      phone: activeManager?.phone ?? null,
+      hasChange,
     },
     yearMonth: "2026-05",
     items: {
@@ -56,10 +95,10 @@ async function main() {
       LOC_ENT: "OK",
       LOC_DIR: "OK",
       DOC_FILE: "OK",
-      TIME_24: "OK"
+      TIME_24: "OK",
     },
     notes: "본체 외관 상단 측면 미세 흠집 확인 — 작동에는 영향 없으나 모니터링 필요.",
-    inspectedAt: new Date()
+    inspectedAt: new Date(),
   }
 
   const outDir = join(process.cwd(), "docs/book/assets/sample-report")

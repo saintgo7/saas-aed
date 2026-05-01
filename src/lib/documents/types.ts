@@ -40,14 +40,29 @@ export const deviceSchema = z.object({
   model: z.string().min(1),
   serial: z.string().min(1),
   location: z.string().min(1),
+  // Optional MOHW fields — present when sourced from the devices table.
+  manufacturedAt: z.date().optional(),
+  purchasedAt: z.date().optional(),
   expiresAt: z.date(),
   padReplaceAt: z.date(),
+  batteryReplaceAt: z.date().optional(),
+  available24h: z.boolean().optional(),
 })
 
 export const inspectorSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   phone: z.string().nullable().optional(),
+})
+
+/**
+ * Group 5 of the MOHW form: 관리자 변경사항.
+ * `hasChange` flips the 있음/없음 checkbox.
+ */
+export const managerSchema = z.object({
+  name: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  hasChange: z.boolean(),
 })
 
 /** "YYYY-MM" format. */
@@ -61,6 +76,7 @@ export const inspectionReportDataSchema = z.object({
   organization: organizationSchema,
   device: deviceSchema,
   inspector: inspectorSchema,
+  manager: managerSchema.optional(),
   yearMonth: yearMonthSchema,
   items: itemsRecordSchema,
   notes: z.string().nullable().optional(),

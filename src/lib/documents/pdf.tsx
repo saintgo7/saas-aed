@@ -1,13 +1,11 @@
 // PDF generator for AED inspection reports.
 //
-// Dependency: `@react-pdf/renderer` (already in package.json).
-// Korean glyphs require a registered font — we register Pretendard from
-// /public/fonts/Pretendard-Regular.otf (and -Bold.otf).
-// Drop the OTFs into public/fonts/ before generating Korean PDFs.
+// 1:1 visual port of the 보건복지부 자동심장충격기 점검표 HWPX form
+// (docs/forms/aed-inspection-form-mohw.txt). Mirrors docx.ts so the two
+// outputs are visually comparable side-by-side.
 //
-// Note on font styles: Pretendard ships only upright variants. Avoid
-// `fontStyle: "italic"` in component styles or @react-pdf/renderer will
-// fail to resolve the font ("Could not resolve font for Pretendard").
+// Dependency: `@react-pdf/renderer`. Korean glyphs require a registered font;
+// we register Pretendard from /public/fonts/Pretendard-{Regular,Bold}.otf.
 
 import * as React from "react"
 import {
@@ -23,13 +21,9 @@ import {
 import fs from "node:fs"
 import path from "node:path"
 
+import { INSPECTION_ITEMS } from "@/lib/inspection/items"
 import { getLabels } from "./i18n"
-import {
-  INSPECTION_ITEM_CODES,
-  type InspectionItemCode,
-  type InspectionReportData,
-  type ReportLocale,
-} from "./types"
+import type { InspectionReportData, ReportLocale } from "./types"
 
 // ---------- Font registration -------------------------------------------------
 
@@ -37,8 +31,6 @@ let fontsRegistered = false
 
 function registerFontsOnce(): void {
   if (fontsRegistered) return
-  // Resolve from project root so this works in dev (next dev) and prod (next start).
-  // fontkit (used by @react-pdf/renderer server-side) expects an absolute filesystem path.
   const fontDir = path.resolve(process.cwd(), "public", "fonts")
   const regularPath = path.join(fontDir, "Pretendard-Regular.otf")
   const boldPath = path.join(fontDir, "Pretendard-Bold.otf")
@@ -55,7 +47,6 @@ function registerFontsOnce(): void {
         { src: boldPath, fontWeight: 700 },
       ],
     })
-    // Disable hyphenation so Korean lines do not break with hyphens.
     Font.registerHyphenationCallback((word) => [word])
     fontsRegistered = true
   } catch (error) {
@@ -68,136 +59,119 @@ function registerFontsOnce(): void {
 
 // ---------- Styles ------------------------------------------------------------
 
-// Column widths in % — must mirror DOCX layout proportions.
-// Device/Inspector/Summary tables: [25%, 75%]
-// Items table: [15%, 49%, 13%, 23%] (sums to 100%)
-const COLS = {
-  label: "25%",
-  value: "75%",
-  itemCode: "15%",
-  itemName: "49%",
-  itemResult: "13%",
-  itemRemark: "23%",
-} as const
+const BORDER_DARK = "#555"
+const BORDER_LIGHT = "#888"
+const HEADER_BG = "#EAEAEA"
+const GROUP_BG = "#F4F4F4"
 
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 68, // ~24mm
-    paddingBottom: 68,
-    paddingHorizontal: 68,
+    paddingTop: 32,
+    paddingBottom: 36,
+    paddingHorizontal: 40,
     fontFamily: "Pretendard",
-    fontSize: 10,
+    fontSize: 8.5,
     color: "#1a1a1a",
   },
   title: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 700,
     textAlign: "center",
-    marginBottom: 6,
+    marginBottom: 3,
   },
-  subtitle: {
-    fontSize: 11,
-    textAlign: "center",
-    color: "#444",
-    marginBottom: 18,
+  meta: {
+    fontSize: 8.5,
+    color: "#555",
+    textAlign: "right",
+    marginBottom: 6,
   },
   sectionHeading: {
-    fontSize: 13,
+    fontSize: 10,
     fontWeight: 700,
-    marginTop: 14,
-    marginBottom: 6,
-    paddingBottom: 3,
-    borderBottomWidth: 1,
-    borderBottomColor: "#666",
-    borderBottomStyle: "solid",
+    marginTop: 6,
+    marginBottom: 2,
   },
+
+  // Tables
   table: {
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: "#999",
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderTopColor: BORDER_DARK,
+    borderLeftColor: BORDER_DARK,
+    borderTopStyle: "solid",
+    borderLeftStyle: "solid",
   },
   row: {
     flexDirection: "row",
     borderBottomWidth: 1,
+    borderBottomColor: BORDER_LIGHT,
     borderBottomStyle: "solid",
-    borderBottomColor: "#bbb",
   },
-  rowLast: {
+  rowDark: {
     flexDirection: "row",
-  },
-  headerRow: {
-    flexDirection: "row",
-    backgroundColor: "#f2f2f2",
     borderBottomWidth: 1,
+    borderBottomColor: BORDER_DARK,
     borderBottomStyle: "solid",
-    borderBottomColor: "#999",
   },
-  cellLabel: {
-    backgroundColor: "#f2f2f2",
-    padding: 6,
-    fontWeight: 700,
+  cell: {
+    padding: 3,
     borderRightWidth: 1,
+    borderRightColor: BORDER_LIGHT,
     borderRightStyle: "solid",
-    borderRightColor: "#bbb",
-  },
-  cellValue: {
-    padding: 6,
-  },
-  cellHeader: {
-    padding: 6,
-    fontWeight: 700,
-    borderRightWidth: 1,
-    borderRightStyle: "solid",
-    borderRightColor: "#bbb",
-  },
-  cellHeaderLast: {
-    padding: 6,
-    fontWeight: 700,
-  },
-  cellBody: {
-    padding: 6,
-    borderRightWidth: 1,
-    borderRightStyle: "solid",
-    borderRightColor: "#bbb",
-  },
-  cellBodyLast: {
-    padding: 6,
-  },
-  resultOk: { color: "#1E8449", fontWeight: 700, textAlign: "center" },
-  resultNg: { color: "#C0392B", fontWeight: 700, textAlign: "center" },
-  resultNone: { color: "#555", textAlign: "center" },
-  signatureBox: {
-    height: 80,
-    width: 180,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: "#ccc",
-    alignItems: "center",
     justifyContent: "center",
   },
-  signatureMissing: {
-    color: "#888",
-    // Note: fontStyle "italic" intentionally omitted — Pretendard ships only
-    // upright variants, and an italic descriptor would fail font resolution.
+  cellHeader: {
+    padding: 3,
+    backgroundColor: HEADER_BG,
+    borderRightWidth: 1,
+    borderRightColor: BORDER_DARK,
+    borderRightStyle: "solid",
+    justifyContent: "center",
+  },
+  cellGroup: {
+    padding: 3,
+    backgroundColor: GROUP_BG,
+    borderRightWidth: 1,
+    borderRightColor: BORDER_LIGHT,
+    borderRightStyle: "solid",
+    justifyContent: "center",
+  },
+  textCenter: { textAlign: "center" },
+  textLeft: { textAlign: "left" },
+  textRight: { textAlign: "right" },
+  bold: { fontWeight: 700 },
+  small: { fontSize: 8, color: "#555" },
+  check: { fontWeight: 700, fontSize: 11, textAlign: "center" },
+
+  // Footer
+  footerRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  footerCol: {
+    flexDirection: "column",
+  },
+  footerLabel: {
+    fontWeight: 700,
+    fontSize: 10,
+  },
+  signatureImage: {
+    width: 100,
+    height: 40,
+    marginTop: 2,
   },
   notes: {
-    padding: 6,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: "#999",
-    minHeight: 40,
-  },
-  inspectedAt: {
-    marginTop: 16,
-    fontSize: 10,
+    marginTop: 6,
+    fontSize: 8.5,
     color: "#444",
   },
-  footer: {
+  pageFooter: {
     position: "absolute",
-    bottom: 28,
-    left: 68,
-    right: 68,
-    fontSize: 9,
+    bottom: 18,
+    left: 44,
+    right: 44,
+    fontSize: 8,
     color: "#888",
     textAlign: "center",
   },
@@ -205,42 +179,156 @@ const styles = StyleSheet.create({
 
 // ---------- Helpers -----------------------------------------------------------
 
-function formatDate(d: Date): string {
+function formatDate(d?: Date): string {
+  if (!d) return "-"
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, "0")
   const day = String(d.getDate()).padStart(2, "0")
   return `${y}-${m}-${day}`
 }
 
-function formatDateTime(d: Date): string {
-  const date = formatDate(d)
-  const hh = String(d.getHours()).padStart(2, "0")
-  const mm = String(d.getMinutes()).padStart(2, "0")
-  return `${date} ${hh}:${mm}`
+function formatDateKorean(d: Date): string {
+  return `${d.getFullYear()}년 ${String(d.getMonth() + 1).padStart(2, "0")}월 ${String(
+    d.getDate(),
+  ).padStart(2, "0")}일`
 }
+
+const CHECK = "✓"
 
 // ---------- Sub-components ----------------------------------------------------
 
-type LabelValueRow = { label: string; value: string; isLast?: boolean }
+type CellProps = {
+  width: string
+  children?: React.ReactNode
+  variant?: "header" | "group" | "default"
+  align?: "left" | "center" | "right"
+  isLastInRow?: boolean
+  bold?: boolean
+}
 
-function KeyValueTable({ rows }: { rows: LabelValueRow[] }): React.ReactElement {
+function Cell({
+  width,
+  children,
+  variant = "default",
+  align = "left",
+  isLastInRow = false,
+  bold = false,
+}: CellProps): React.ReactElement {
+  const base =
+    variant === "header"
+      ? styles.cellHeader
+      : variant === "group"
+        ? styles.cellGroup
+        : styles.cell
+  const style = [
+    base,
+    { width },
+    isLastInRow ? { borderRightWidth: 0 } : {},
+  ]
+  const alignStyle =
+    align === "center"
+      ? styles.textCenter
+      : align === "right"
+        ? styles.textRight
+        : styles.textLeft
   return (
-    <View style={styles.table}>
-      {rows.map((r, i) => (
-        <View key={r.label} style={i === rows.length - 1 ? styles.rowLast : styles.row}>
-          <View style={[styles.cellLabel, { width: COLS.label }]}>
-            <Text>{r.label}</Text>
-          </View>
-          <View style={[styles.cellValue, { width: COLS.value }]}>
-            <Text>{r.value}</Text>
-          </View>
-        </View>
-      ))}
+    <View style={style}>
+      {typeof children === "string" ? (
+        <Text style={[alignStyle, bold ? styles.bold : {}]}>{children}</Text>
+      ) : (
+        children
+      )}
     </View>
   )
 }
 
-function ItemsTable({
+// ---------- Section: 장비정보 (4 cols) ---------------------------------------
+
+function DeviceInfoTable({
+  data,
+  locale,
+}: {
+  data: InspectionReportData
+  locale: ReportLocale
+}): React.ReactElement {
+  const L = getLabels(locale)
+  const w = "25%"
+  return (
+    <View style={styles.table}>
+      <View style={styles.rowDark}>
+        <Cell width={w} variant="header" align="center" bold>
+          {L.manufacturer}
+        </Cell>
+        <Cell width={w} variant="header" align="center" bold>
+          {L.model}
+        </Cell>
+        <Cell width={w} variant="header" align="center" bold>
+          {L.serial}
+        </Cell>
+        <Cell width={w} variant="header" align="center" bold isLastInRow>
+          {L.manufacturedAt}
+        </Cell>
+      </View>
+      <View style={[styles.row, { borderBottomWidth: 1, borderBottomColor: BORDER_DARK }]}>
+        <Cell width={w} align="center">
+          {data.device.manufacturer}
+        </Cell>
+        <Cell width={w} align="center">
+          {data.device.model}
+        </Cell>
+        <Cell width={w} align="center">
+          {data.device.serial}
+        </Cell>
+        <Cell width={w} align="center" isLastInRow>
+          {formatDate(data.device.manufacturedAt)}
+        </Cell>
+      </View>
+    </View>
+  )
+}
+
+// ---------- Section: 장비유지기간 (3 cols) ----------------------------------
+
+function MaintenanceTable({
+  data,
+  locale,
+}: {
+  data: InspectionReportData
+  locale: ReportLocale
+}): React.ReactElement {
+  const L = getLabels(locale)
+  const w = "33.33%"
+  return (
+    <View style={styles.table}>
+      <View style={styles.rowDark}>
+        <Cell width={w} variant="header" align="center" bold>
+          {L.purchasedAt}
+        </Cell>
+        <Cell width={w} variant="header" align="center" bold>
+          {L.expiresAt}
+        </Cell>
+        <Cell width={w} variant="header" align="center" bold isLastInRow>
+          {L.padReplaceAt}
+        </Cell>
+      </View>
+      <View style={[styles.row, { borderBottomWidth: 1, borderBottomColor: BORDER_DARK }]}>
+        <Cell width={w} align="center">
+          {formatDate(data.device.purchasedAt)}
+        </Cell>
+        <Cell width={w} align="center">
+          {formatDate(data.device.expiresAt)}
+        </Cell>
+        <Cell width={w} align="center" isLastInRow>
+          {formatDate(data.device.padReplaceAt)}
+        </Cell>
+      </View>
+    </View>
+  )
+}
+
+// ---------- Section: 설치위치 ------------------------------------------------
+
+function LocationTable({
   data,
   locale,
 }: {
@@ -250,53 +338,40 @@ function ItemsTable({
   const L = getLabels(locale)
   return (
     <View style={styles.table}>
-      <View style={styles.headerRow}>
-        <View style={[styles.cellHeader, { width: COLS.itemCode }]}>
-          <Text>{L.colCode}</Text>
-        </View>
-        <View style={[styles.cellHeader, { width: COLS.itemName }]}>
-          <Text>{L.colItemName}</Text>
-        </View>
-        <View style={[styles.cellHeader, { width: COLS.itemResult }]}>
-          <Text>{L.colResult}</Text>
-        </View>
-        <View style={[styles.cellHeaderLast, { width: COLS.itemRemark }]}>
-          <Text>{L.colRemark}</Text>
-        </View>
+      <View style={[styles.row, { borderBottomWidth: 1, borderBottomColor: BORDER_DARK }]}>
+        <Cell width="20%" variant="header" align="center" bold>
+          {L.location}
+        </Cell>
+        <Cell width="80%" align="left" isLastInRow>
+          {data.device.location}
+        </Cell>
       </View>
-      {INSPECTION_ITEM_CODES.map((code, i) => {
-        const isLast = i === INSPECTION_ITEM_CODES.length - 1
-        const result = data.items[code]
-        const resultLabel =
-          result === "OK" ? L.resultOk : result === "NG" ? L.resultNg : "-"
-        const resultStyle =
-          result === "OK"
-            ? styles.resultOk
-            : result === "NG"
-              ? styles.resultNg
-              : styles.resultNone
-        return (
-          <View key={code} style={isLast ? styles.rowLast : styles.row}>
-            <View style={[styles.cellBody, { width: COLS.itemCode }]}>
-              <Text>{code}</Text>
-            </View>
-            <View style={[styles.cellBody, { width: COLS.itemName }]}>
-              <Text>{L.itemNames[code as InspectionItemCode]}</Text>
-            </View>
-            <View style={[styles.cellBody, { width: COLS.itemResult }]}>
-              <Text style={resultStyle}>{resultLabel}</Text>
-            </View>
-            <View style={[styles.cellBodyLast, { width: COLS.itemRemark }]}>
-              <Text> </Text>
-            </View>
-          </View>
-        )
-      })}
     </View>
   )
 }
 
-function Signature({
+// ---------- Section: Main inspection table ----------------------------------
+
+const COL_NO = "8%"
+const COL_ITEM = "59%"
+const COL_NG = "16.5%"
+const COL_OK = "16.5%"
+
+function CheckCell({
+  marked,
+  isLastInRow = false,
+}: {
+  marked: boolean
+  isLastInRow?: boolean
+}): React.ReactElement {
+  return (
+    <Cell width={isLastInRow ? COL_OK : COL_NG} align="center" isLastInRow={isLastInRow}>
+      <Text style={styles.check}>{marked ? CHECK : ""}</Text>
+    </Cell>
+  )
+}
+
+function MainTable({
   data,
   locale,
 }: {
@@ -304,17 +379,215 @@ function Signature({
   locale: ReportLocale
 }): React.ReactElement {
   const L = getLabels(locale)
-  if (!data.signatureDataUrl) {
-    return (
-      <View style={styles.signatureBox}>
-        <Text style={styles.signatureMissing}>{L.signatureMissing}</Text>
+  const items = data.items as Record<string, "OK" | "NG">
+
+  const rows: React.ReactElement[] = []
+
+  // Header (two rows): merged 점검결과 over 이상있음 / 이상없음
+  rows.push(
+    <View key="hdr1" style={styles.rowDark}>
+      <Cell width={COL_NO} variant="header" align="center" bold>
+        {L.no}
+      </Cell>
+      <Cell width={COL_ITEM} variant="header" align="center" bold>
+        {L.item}
+      </Cell>
+      <View style={[styles.cellHeader, { width: "33%", borderRightWidth: 0 }]}>
+        <Text style={[styles.textCenter, styles.bold]}>{L.result}</Text>
+        <View
+          style={{
+            flexDirection: "row",
+            marginTop: 4,
+            paddingTop: 3,
+            borderTopWidth: 1,
+            borderTopColor: BORDER_DARK,
+            borderTopStyle: "solid",
+          }}
+        >
+          <Text style={[styles.textCenter, styles.bold, { width: "50%" }]}>
+            {L.abnormal}
+          </Text>
+          <Text style={[styles.textCenter, styles.bold, { width: "50%" }]}>
+            {L.normal}
+          </Text>
+        </View>
       </View>
+    </View>,
+  )
+
+  // Group 1~4 derived from INSPECTION_ITEMS
+  for (const groupNo of [1, 2, 3, 4] as const) {
+    const groupItems = INSPECTION_ITEMS.filter((i) => i.group === groupNo)
+    if (groupItems.length === 0) continue
+
+    rows.push(
+      <View key={`g${groupNo}`} style={styles.row}>
+        <Cell width={COL_NO} variant="group" align="center" bold>
+          {String(groupNo)}
+        </Cell>
+        <Cell width="92%" variant="group" align="left" bold isLastInRow>
+          {L.groupNames[groupNo]}
+        </Cell>
+      </View>,
     )
+
+    for (const it of groupItems) {
+      const baseLabel = locale === "ko" ? it.labelKo : it.labelEn
+      const display = it.sub ? `${it.sub} ${baseLabel}` : baseLabel
+      const result = items[it.code]
+
+      rows.push(
+        <View key={it.code} style={styles.row}>
+          <Cell width={COL_NO} align="center">
+            {""}
+          </Cell>
+          <Cell width={COL_ITEM} align="left">
+            {display}
+          </Cell>
+          <CheckCell marked={result === "NG"} />
+          <CheckCell marked={result === "OK"} isLastInRow />
+        </View>,
+      )
+
+      if (it.code === "OP_PAD") {
+        rows.push(
+          <View key={`${it.code}-ann`} style={styles.row}>
+            <Cell width={COL_NO} align="center">
+              {""}
+            </Cell>
+            <Cell width="92%" align="left" isLastInRow>
+              <Text style={styles.small}>
+                ⦁ {L.padReplaceAt} : {formatDate(data.device.padReplaceAt)}
+              </Text>
+            </Cell>
+          </View>,
+        )
+      } else if (it.code === "OP_BATTERY") {
+        rows.push(
+          <View key={`${it.code}-ann`} style={styles.row}>
+            <Cell width={COL_NO} align="center">
+              {""}
+            </Cell>
+            <Cell width="92%" align="left" isLastInRow>
+              <Text style={styles.small}>
+                ⦁ {L.batteryReplaceAt} : {formatDate(data.device.batteryReplaceAt)}
+              </Text>
+            </Cell>
+          </View>,
+        )
+      }
+    }
   }
+
+  // Group 5: 관리자 변경사항
+  const managerHasChange = data.manager?.hasChange ?? false
+  const managerName = data.manager?.name ?? ""
+  const managerPhone = data.manager?.phone ?? ""
+
+  rows.push(
+    <View key="g5-hdr" style={styles.row}>
+      <Cell width={COL_NO} variant="group" align="center" bold>
+        5
+      </Cell>
+      <Cell width={COL_ITEM} variant="group" align="left" bold>
+        {L.managerChange}
+      </Cell>
+      <Cell width={COL_NG} variant="group" align="center" bold>
+        {L.hasChange}
+      </Cell>
+      <Cell width={COL_OK} variant="group" align="center" bold isLastInRow>
+        {L.noChange}
+      </Cell>
+    </View>,
+  )
+  rows.push(
+    <View key="g5-row" style={styles.row}>
+      <Cell width={COL_NO} align="center">
+        {""}
+      </Cell>
+      <Cell width={COL_ITEM} align="left">
+        {`① ${L.managerName} : ${managerName || "    "}    ${L.managerPhone} : ${managerPhone || "    "}`}
+      </Cell>
+      <CheckCell marked={managerHasChange} />
+      <CheckCell marked={!managerHasChange} isLastInRow />
+    </View>,
+  )
+
+  // Group 6: 24시간 이용 가능 / 24시간 사용 불가
+  const available24h = data.device.available24h ?? items["TIME_24"] === "OK"
+  rows.push(
+    <View key="g6" style={styles.row}>
+      <Cell width={COL_NO} variant="group" align="center" bold>
+        6
+      </Cell>
+      <Cell width="92%" variant="group" align="left" bold isLastInRow>
+        {L.operatingHours}
+      </Cell>
+    </View>,
+  )
+  rows.push(
+    <View key="g6-1" style={styles.row}>
+      <Cell width={COL_NO} align="center">
+        {""}
+      </Cell>
+      <Cell width={COL_ITEM} align="left">
+        {`① ${L.available24h}`}
+      </Cell>
+      <CheckCell marked={available24h} />
+      <Cell width={COL_OK} align="center" isLastInRow>
+        {""}
+      </Cell>
+    </View>,
+  )
+  rows.push(
+    <View
+      key="g6-2"
+      style={[styles.row, { borderBottomWidth: 1, borderBottomColor: BORDER_DARK }]}
+    >
+      <Cell width={COL_NO} align="center">
+        {""}
+      </Cell>
+      <Cell width={COL_ITEM} align="left">
+        {`② ${L.notAvailable24h}`}
+      </Cell>
+      <CheckCell marked={!available24h} />
+      <Cell width={COL_OK} align="center" isLastInRow>
+        {""}
+      </Cell>
+    </View>,
+  )
+
+  return <View style={styles.table}>{rows}</View>
+}
+
+// ---------- Footer (date + signature) ---------------------------------------
+
+function FooterBlock({
+  data,
+  locale,
+}: {
+  data: InspectionReportData
+  locale: ReportLocale
+}): React.ReactElement {
+  const L = getLabels(locale)
+  const dateText =
+    locale === "ko"
+      ? `${L.inspectionDate} : ${formatDateKorean(data.inspectedAt)}`
+      : `${L.inspectionDate} : ${formatDate(data.inspectedAt)}`
+
   return (
-    <View style={styles.signatureBox}>
-      {/* react-pdf accepts data URLs directly. */}
-      <Image src={data.signatureDataUrl} style={{ width: 178, height: 78 }} />
+    <View style={styles.footerRow}>
+      <View style={styles.footerCol}>
+        <Text style={styles.footerLabel}>{dateText}</Text>
+      </View>
+      <View style={[styles.footerCol, { alignItems: "flex-end" }]}>
+        <Text style={styles.footerLabel}>
+          {L.inspector} : {data.inspector.name}    {L.signature}
+        </Text>
+        {data.signatureDataUrl ? (
+          <Image src={data.signatureDataUrl} style={styles.signatureImage} />
+        ) : null}
+      </View>
     </View>
   )
 }
@@ -329,69 +602,40 @@ export function InspectionReport({
   locale?: ReportLocale
 }): React.ReactElement {
   const L = getLabels(locale)
-  const total = INSPECTION_ITEM_CODES.length
-  const okCount = INSPECTION_ITEM_CODES.filter((c) => data.items[c] === "OK").length
-  const ngCount = INSPECTION_ITEM_CODES.filter((c) => data.items[c] === "NG").length
   const notesText = data.notes && data.notes.trim().length > 0 ? data.notes : L.notesNone
 
   return (
     <Document title={L.title} author="saas-aed">
       <Page size="A4" style={styles.page}>
         <Text style={styles.title}>{L.title}</Text>
-        <Text style={styles.subtitle}>
-          {data.organization.name} · {L.subtitleYearMonth}: {data.yearMonth}
+        <Text style={styles.meta}>
+          {L.organization} : {data.organization.name}    {L.subtitleYearMonth} :{" "}
+          {data.yearMonth}
         </Text>
 
-        <Text style={styles.sectionHeading}>{L.sectionDevice}</Text>
-        <KeyValueTable
-          rows={[
-            { label: L.deviceManufacturer, value: data.device.manufacturer },
-            { label: L.deviceModel, value: data.device.model },
-            { label: L.deviceSerial, value: data.device.serial },
-            { label: L.deviceLocation, value: data.device.location },
-            { label: L.deviceExpiresAt, value: formatDate(data.device.expiresAt) },
-            { label: L.devicePadReplaceAt, value: formatDate(data.device.padReplaceAt) },
-          ]}
-        />
+        <Text style={styles.sectionHeading}>{L.deviceInfo}</Text>
+        <DeviceInfoTable data={data} locale={locale} />
 
-        <Text style={styles.sectionHeading}>{L.sectionItems}</Text>
-        <ItemsTable data={data} locale={locale} />
+        <Text style={styles.sectionHeading}>{L.maintenance}</Text>
+        <MaintenanceTable data={data} locale={locale} />
 
-        <Text style={styles.sectionHeading}>{L.sectionSummary}</Text>
-        <KeyValueTable
-          rows={[
-            { label: L.summaryTotal, value: String(total) },
-            { label: L.summaryOk, value: String(okCount) },
-            { label: L.summaryNg, value: String(ngCount) },
-          ]}
-        />
-
-        <Text style={styles.sectionHeading}>{L.sectionInspector}</Text>
-        <KeyValueTable
-          rows={[
-            { label: L.inspectorName, value: data.inspector.name },
-            { label: L.inspectorEmail, value: data.inspector.email },
-            { label: L.inspectorPhone, value: data.inspector.phone ?? "-" },
-          ]}
-        />
-
-        <Text style={styles.sectionHeading}>{L.sectionSignature}</Text>
-        <Signature data={data} locale={locale} />
-
-        <Text style={styles.sectionHeading}>{L.sectionNotes}</Text>
-        <View style={styles.notes}>
-          <Text>{notesText}</Text>
+        <View style={{ marginTop: 6 }}>
+          <LocationTable data={data} locale={locale} />
         </View>
 
-        <Text style={styles.inspectedAt}>
-          {L.inspectedAt}: {formatDateTime(data.inspectedAt)}
+        <View style={{ marginTop: 8 }}>
+          <MainTable data={data} locale={locale} />
+        </View>
+
+        <Text style={styles.notes}>
+          ※ {L.notesLabel} : {notesText}
         </Text>
 
+        <FooterBlock data={data} locale={locale} />
+
         <Text
-          style={styles.footer}
-          render={({ pageNumber, totalPages }) =>
-            L.footerPage(pageNumber, totalPages)
-          }
+          style={styles.pageFooter}
+          render={({ pageNumber, totalPages }) => L.footerPage(pageNumber, totalPages)}
           fixed
         />
       </Page>
