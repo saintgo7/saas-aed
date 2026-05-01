@@ -18,7 +18,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import type { StorageAdapter } from "./index"
 
 // ─────────────────────────────────────────
-// Environment validation (fail fast at module load)
+// Environment validation (lazy — verified on first use, not at module load)
 // ─────────────────────────────────────────
 function requireEnv(name: string): string {
   const value = process.env[name]
@@ -28,25 +28,34 @@ function requireEnv(name: string): string {
   return value
 }
 
-const R2_ACCOUNT_ID = requireEnv("R2_ACCOUNT_ID")
-const R2_ACCESS_KEY_ID = requireEnv("R2_ACCESS_KEY_ID")
-const R2_SECRET_ACCESS_KEY = requireEnv("R2_SECRET_ACCESS_KEY")
-const R2_BUCKET = requireEnv("R2_BUCKET")
-const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL ?? null
+interface R2Config {
+  accountId: string
+  accessKeyId: string
+  secretAccessKey: string
+  bucket: string
+  publicUrl: string | null
+  endpoint: string
+  client: S3Client
+}
 
-const R2_ENDPOINT = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
+let _config: R2Config | null = null
 
-// ─────────────────────────────────────────
-// S3 client (immutable singleton)
-// ─────────────────────────────────────────
-const client: S3Client = new S3Client({
-  region: "auto",
-  endpoint: R2_ENDPOINT,
-  credentials: {
-    accessKeyId: R2_ACCESS_KEY_ID,
-    secretAccessKey: R2_SECRET_ACCESS_KEY
-  }
-})
+function config(): R2Config {
+  if (_config) return _config
+  const accountId = requireEnv("R2_ACCOUNT_ID")
+  const accessKeyId = requireEnv("R2_ACCESS_KEY_ID")
+  const secretAccessKey = requireEnv("R2_SECRET_ACCESS_KEY")
+  const bucket = requireEnv("R2_BUCKET")
+  const publicUrl = process.env.R2_PUBLIC_URL ?? null
+  const endpoint = `https://${accountId}.r2.cloudflarestorage.com`
+  const client = new S3Client({
+    region: "auto",
+    endpoint,
+    credentials: { accessKeyId, secretAccessKey }
+  })
+  _config = { accountId, accessKeyId, secretAccessKey, bucket, publicUrl, endpoint, client }
+  return _config
+}
 
 // ─────────────────────────────────────────
 // Helpers
@@ -62,10 +71,11 @@ function sha256Hex(buf: Buffer): string {
 }
 
 function publicUrlFor(key: string): string {
-  if (R2_PUBLIC_URL) {
-    return `${R2_PUBLIC_URL.replace(/\/+$/, "")}/${key}`
+  const c = config()
+  if (c.publicUrl) {
+    return `${c.publicUrl.replace(/\/+$/, "")}/${key}`
   }
-  return `${R2_ENDPOINT}/${R2_BUCKET}/${key}`
+  return `${c.endpoint}/${c.bucket}/${key}`
 }
 
 // ─────────────────────────────────────────
@@ -73,12 +83,13 @@ function publicUrlFor(key: string): string {
 // ─────────────────────────────────────────
 export const r2Adapter: StorageAdapter = {
   async upload(key, body, opts) {
+    const c = config()
     try {
       const buffer = await toBuffer(body)
       const sha256 = sha256Hex(buffer)
-      await client.send(
+      await c.client.send(
         new PutObjectCommand({
-          Bucket: R2_BUCKET,
+          Bucket: c.bucket,
           Key: key,
           Body: buffer,
           ContentType: opts?.contentType,
@@ -94,9 +105,10 @@ export const r2Adapter: StorageAdapter = {
   },
 
   async getSignedUrl(key, expiresInSec) {
+    const c = config()
     try {
-      const command = new GetObjectCommand({ Bucket: R2_BUCKET, Key: key })
-      return await getSignedUrl(client, command, { expiresIn: expiresInSec })
+      const command = new GetObjectCommand({ Bucket: c.bucket, Key: key })
+      return await getSignedUrl(c.client, command, { expiresIn: expiresInSec })
     } catch (error) {
       console.error("[r2] getSignedUrl failed", { key, error })
       throw new Error(`R2 signed URL generation failed for key '${key}'`)
@@ -104,8 +116,9 @@ export const r2Adapter: StorageAdapter = {
   },
 
   async delete(key) {
+    const c = config()
     try {
-      await client.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }))
+      await c.client.send(new DeleteObjectCommand({ Bucket: c.bucket, Key: key }))
     } catch (error) {
       console.error("[r2] delete failed", { key, error })
       throw new Error(`R2 delete failed for key '${key}'`)

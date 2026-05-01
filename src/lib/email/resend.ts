@@ -20,10 +20,21 @@ function requireEnv(name: string): string {
   return value
 }
 
-const RESEND_API_KEY = requireEnv("RESEND_API_KEY")
-const RESEND_FROM = requireEnv("RESEND_FROM")
+interface ResendConfig {
+  apiKey: string
+  from: string
+  client: Resend
+}
 
-const client = new Resend(RESEND_API_KEY)
+let _config: ResendConfig | null = null
+
+function config(): ResendConfig {
+  if (_config) return _config
+  const apiKey = requireEnv("RESEND_API_KEY")
+  const from = requireEnv("RESEND_FROM")
+  _config = { apiKey, from, client: new Resend(apiKey) }
+  return _config
+}
 
 // ─────────────────────────────────────────
 // Helpers
@@ -38,13 +49,14 @@ function toAddressList(to: string | readonly string[]): string[] {
 export const resendAdapter: EmailAdapter = {
   async send(opts) {
     const { to, subject, react, attachments } = opts
+    const c = config()
 
     const html = await render(react)
     const text = await render(react, { plainText: true })
 
     try {
-      const { data, error } = await client.emails.send({
-        from: RESEND_FROM,
+      const { data, error } = await c.client.emails.send({
+        from: c.from,
         to: toAddressList(to),
         subject,
         html,

@@ -54,7 +54,7 @@ function runText(text: string, opts: Omit<IRunOptions, "text"> = {}): TextRun {
   return new TextRun({ text, font: DEFAULT_FONT, ...opts })
 }
 
-function paragraph(text: string, opts: { bold?: boolean; align?: AlignmentType } = {}): Paragraph {
+function paragraph(text: string, opts: { bold?: boolean; align?: (typeof AlignmentType)[keyof typeof AlignmentType] } = {}): Paragraph {
   return new Paragraph({
     alignment: opts.align,
     children: [runText(text, { bold: opts.bold })],

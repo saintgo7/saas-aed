@@ -48,13 +48,12 @@ export default async function NewInspectionPage({ searchParams }: PageProps) {
     | null
 
   async function onSubmit(data: {
-    deviceId: string
     items: Record<string, "OK" | "NG">
     notes?: string | null
-  }): Promise<{ id: string }> {
+  }): Promise<void> {
     "use server"
     const result = await createInspection({
-      deviceId: data.deviceId,
+      deviceId: deviceId!,
       items: data.items as never,
       notes: data.notes ?? null
     })
@@ -84,8 +83,8 @@ export default async function NewInspectionPage({ searchParams }: PageProps) {
       </Card>
 
       <InspectionForm
-        deviceId={device.id}
-        initialItems={initialItems}
+        device={{ id: device.id, name: `${device.manufacturer} ${device.model}`, location: device.location }}
+        defaultValues={{ items: initialItems ?? undefined }}
         onSubmit={onSubmit}
       />
     </div>

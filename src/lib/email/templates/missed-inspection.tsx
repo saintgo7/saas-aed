@@ -24,19 +24,22 @@ export interface MissedInspectionDevice {
 }
 
 export interface MissedInspectionEmailProps {
-  readonly adminName: string
+  readonly adminName?: string
   readonly yearMonth: string
-  readonly missedDevices: readonly MissedInspectionDevice[]
+  readonly missedDevices?: readonly MissedInspectionDevice[]
+  readonly organizationName?: string
+  readonly userName?: string
+  readonly devices?: readonly { location: string; serial: string; model: string }[]
 }
 
 export function MissedInspectionEmail(props: MissedInspectionEmailProps) {
-  const { adminName, yearMonth, missedDevices } = props
+  const { adminName, yearMonth, missedDevices = [] } = props
 
   return (
     <Html lang="ko">
       <Head />
       <Preview>
-        {yearMonth} 미점검 자동심장충격기 {missedDevices.length}대 안내
+        {yearMonth} 미점검 자동심장충격기 {String(missedDevices.length)}대 안내
       </Preview>
       <Body style={{ backgroundColor: BACKGROUND, fontFamily: "Pretendard, system-ui, sans-serif", margin: 0 }}>
         <Container style={{ maxWidth: 600, margin: "0 auto", padding: "32px 24px" }}>

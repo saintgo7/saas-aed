@@ -33,7 +33,7 @@ export default async function DeviceDetailPage({ params }: PageProps) {
   if (!device) notFound()
 
   const months = past12Months()
-  const startMonth = months[0]
+  const startMonth = months[0] ?? ""
   const inspectionRows = await db
     .select({
       id: schema.inspections.id,

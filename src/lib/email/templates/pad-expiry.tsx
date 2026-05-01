@@ -101,7 +101,7 @@ export function PadExpiryEmail(props: PadExpiryEmailProps) {
     <Html lang="ko">
       <Head />
       <Preview>
-        {heading} — 자동심장충격기 패드 교체 안내 ({devices.length}대)
+        {heading} — 자동심장충격기 패드 교체 안내 ({String(devices.length)}대)
       </Preview>
       <Body style={{ backgroundColor: BACKGROUND, fontFamily: "Pretendard, system-ui, sans-serif", margin: 0 }}>
         <Container style={{ maxWidth: 600, margin: "0 auto", padding: "32px 24px" }}>

@@ -76,6 +76,9 @@ export async function createInspection(
       items: parsed.items,
       notes: parsed.notes ?? null
     })
+    if (!row) {
+      throw new Error("점검 기록 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+    }
 
     revalidatePath("/dashboard")
     revalidatePath("/history")
@@ -156,6 +159,9 @@ export async function sendInspection(id: string): Promise<{ ok: true }> {
       throw new Error("해당 점검 기록을 찾을 수 없습니다.")
     }
     const inspection = inspectionRows[0]
+    if (!inspection) {
+      throw new Error("해당 점검 기록을 찾을 수 없습니다.")
+    }
 
     const [device] = await withTenant(session.user.tenantId)
       .devices()
@@ -177,29 +183,32 @@ export async function sendInspection(id: string): Promise<{ ok: true }> {
     if (!inspector) throw new Error("점검자 정보를 찾을 수 없습니다.")
 
     // Render and upload DOCX/PDF (other agent provides this implementation).
-    const rendered = await renderAndUploadReport({
-      inspectionId: id,
-      tenantId: session.user.tenantId,
-      organization: { name: org.name, contactEmail: org.contactEmail },
-      device: {
-        manufacturer: device.manufacturer,
-        model: device.model,
-        serial: device.serial,
-        location: device.location,
-        expiresAt: device.expiresAt,
-        padReplaceAt: device.padReplaceAt
+    const rendered = await renderAndUploadReport(
+      {
+        organization: { name: org.name, contactEmail: org.contactEmail },
+        device: {
+          manufacturer: device.manufacturer,
+          model: device.model,
+          serial: device.serial,
+          location: device.location,
+          expiresAt: device.expiresAt,
+          padReplaceAt: device.padReplaceAt
+        },
+        inspector: {
+          name: inspector.name,
+          email: inspector.email,
+          phone: inspector.phone ?? null
+        },
+        yearMonth: inspection.yearMonth,
+        items: inspection.items as Record<string, "OK" | "NG">,
+        notes: inspection.notes,
+        inspectedAt: inspection.createdAt
       },
-      inspector: {
-        name: inspector.name,
-        email: inspector.email,
-        phone: inspector.phone ?? null
-      },
-      yearMonth: inspection.yearMonth,
-      items: inspection.items as Record<string, "OK" | "NG">,
-      notes: inspection.notes,
-      signatureDataUrl: undefined,
-      inspectedAt: inspection.createdAt
-    })
+      {
+        inspectionId: id,
+        tenantId: session.user.tenantId
+      }
+    )
 
     await db
       .update(schema.inspections)

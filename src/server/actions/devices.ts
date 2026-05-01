@@ -57,6 +57,9 @@ export async function createDevice(input: DeviceCreateInput): Promise<{ id: stri
       tenantId: session.user.tenantId,
       locationDetail: parsed.locationDetail ?? null
     })
+    if (!row) {
+      throw new Error("장비 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+    }
     revalidatePath("/devices")
     revalidatePath("/dashboard")
     return { id: row.id }
@@ -96,12 +99,13 @@ export async function updateDevice(
         )
       )
       .returning({ id: schema.devices.id })
-    if (result.length === 0) {
+    const [row] = result
+    if (!row) {
       throw new Error("해당 장비를 찾을 수 없습니다.")
     }
     revalidatePath("/devices")
     revalidatePath(`/devices/${id}`)
-    return { id: result[0].id }
+    return { id: row.id }
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("해당 장비")) throw error
     console.error("[devices] updateDevice failed", { id, error })

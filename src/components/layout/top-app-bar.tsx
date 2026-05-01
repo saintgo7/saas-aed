@@ -7,7 +7,7 @@ import { ChevronLeft } from "lucide-react"
 
 import { cn } from "@/lib/utils/cn"
 
-export interface TopAppBarProps extends React.HTMLAttributes<HTMLElement> {
+export interface TopAppBarProps extends Omit<React.HTMLAttributes<HTMLElement>, "title"> {
   title: React.ReactNode
   /**
    * Back-button behavior:

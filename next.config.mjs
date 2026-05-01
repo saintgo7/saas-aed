@@ -1,6 +1,5 @@
-import type { NextConfig } from "next"
-
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,
@@ -11,14 +10,8 @@ const nextConfig: NextConfig = {
   },
   images: {
     remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "*.r2.dev"
-      },
-      {
-        protocol: "https",
-        hostname: "r2.aed.abada.co.kr"
-      }
+      { protocol: "https", hostname: "*.r2.dev" },
+      { protocol: "https", hostname: "r2.aed.abada.co.kr" }
     ]
   },
   async headers() {

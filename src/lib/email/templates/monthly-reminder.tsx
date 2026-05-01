@@ -18,10 +18,12 @@ const BORDER = "#E2E8F0"
 const BACKGROUND = "#F8FAFC"
 
 export interface MonthlyReminderEmailProps {
-  readonly inspectorName: string
+  readonly inspectorName?: string
   readonly yearMonth: string
-  readonly deviceCount: number
-  readonly dashboardUrl: string
+  readonly deviceCount?: number
+  readonly dashboardUrl?: string
+  readonly organizationName?: string
+  readonly userName?: string
 }
 
 export function MonthlyReminderEmail(props: MonthlyReminderEmailProps) {
@@ -31,7 +33,7 @@ export function MonthlyReminderEmail(props: MonthlyReminderEmailProps) {
     <Html lang="ko">
       <Head />
       <Preview>
-        {yearMonth} 자동심장충격기 자가 점검 안내 — {deviceCount}대 점검 대상
+        {yearMonth} 자동심장충격기 자가 점검 안내 — {String(deviceCount)}대 점검 대상
       </Preview>
       <Body style={{ backgroundColor: BACKGROUND, fontFamily: "Pretendard, system-ui, sans-serif", margin: 0 }}>
         <Container style={{ maxWidth: 560, margin: "0 auto", padding: "32px 24px" }}>
