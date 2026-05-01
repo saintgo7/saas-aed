@@ -40,6 +40,21 @@ pnpm dev               # http://localhost:3000
 pnpm cron:dev          # cron worker (별도 터미널)
 ```
 
+### 데모 모드 (로그인 없이 체험)
+
+`.env.local` 또는 환경변수에 `DEMO_MODE=true` 설정 → 시드된 ADMIN 계정으로 자동 로그인.
+
+```bash
+# 시드 + 데모 모드 실행
+docker compose up -d postgres redis
+pnpm db:migrate
+pnpm seed:dev
+DEMO_MODE=true pnpm dev
+# → http://localhost:3000 접속하면 곧바로 /dashboard 진입
+```
+
+대시보드 상단에 "DEMO 모드" 황색 배너가 표시되며, Resend 이메일·R2 업로드는 모의(stub) 처리됩니다. **운영 환경에서는 절대 `DEMO_MODE`를 켜지 마세요.**
+
 ### 운영 배포 (abada-65)
 
 [부록 C 운영 체크리스트](docs/book/ko/appendix/C-ops-checklist.md) 참조.

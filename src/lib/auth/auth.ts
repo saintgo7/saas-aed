@@ -1,8 +1,8 @@
-import NextAuth from "next-auth"
+import NextAuth, { type Session } from "next-auth"
 import Resend from "next-auth/providers/resend"
 import { DrizzleAdapter } from "@auth/drizzle-adapter"
+import { asc, eq } from "drizzle-orm"
 import { db, schema } from "@/lib/db"
-import { eq } from "drizzle-orm"
 
 declare module "next-auth" {
   interface Session {
@@ -16,7 +16,7 @@ declare module "next-auth" {
   }
 }
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+const nextAuth = NextAuth({
   adapter: DrizzleAdapter(db),
   providers: [
     Resend({
@@ -54,3 +54,50 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   trustHost: true
 })
+
+export const { handlers, signIn, signOut } = nextAuth
+
+export const isDemoMode = (): boolean =>
+  process.env.DEMO_MODE === "true" && process.env.NEXT_PHASE !== "phase-production-build"
+
+// Cached demo session — avoids hitting DB on every auth() call in demo mode.
+let _demoSession: Session | null = null
+
+async function getDemoSession(): Promise<Session | null> {
+  if (_demoSession) return _demoSession
+  try {
+    const users = await db
+      .select()
+      .from(schema.users)
+      .orderBy(asc(schema.users.createdAt))
+      .limit(20)
+    const admin = users.find((u) => u.role === "ADMIN") ?? users.find((u) => u.role === "INSPECTOR") ?? users[0]
+    if (!admin) return null
+    _demoSession = {
+      user: {
+        id: admin.id,
+        email: admin.email,
+        name: admin.name,
+        tenantId: admin.tenantId,
+        role: admin.role
+      },
+      expires: new Date(Date.now() + 86_400_000).toISOString()
+    } as Session
+    return _demoSession
+  } catch (error) {
+    console.warn("[auth] demo session lookup failed", error)
+    return null
+  }
+}
+
+/**
+ * Wrapped auth() — short-circuits to a seeded admin when DEMO_MODE=true.
+ * Production usage requires DEMO_MODE unset or "false".
+ */
+export const auth = async (): Promise<Session | null> => {
+  if (isDemoMode()) {
+    const demo = await getDemoSession()
+    if (demo) return demo
+  }
+  return nextAuth.auth()
+}

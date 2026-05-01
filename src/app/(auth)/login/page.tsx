@@ -1,7 +1,12 @@
 import Link from "next/link"
+import { redirect } from "next/navigation"
+import { isDemoMode } from "@/lib/auth/auth"
 import { LoginForm } from "./login-form"
 
 export default function LoginPage() {
+  if (isDemoMode()) {
+    redirect("/dashboard")
+  }
   return (
     <div className="space-y-8">
       <div className="text-center space-y-2">

@@ -10,6 +10,14 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  // DEMO MODE: skip auth entirely at the edge.
+  // Pages call auth() (Node runtime) which returns the seeded demo session.
+  if (process.env.DEMO_MODE === "true") {
+    const res = NextResponse.next()
+    res.headers.set("x-demo-mode", "true")
+    return res
+  }
+
   const session = await auth()
   if (!session?.user) {
     const loginUrl = new URL("/login", req.url)
