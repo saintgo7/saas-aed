@@ -2,109 +2,127 @@ import { z } from "zod"
 
 /**
  * 12-item monthly AED self-inspection checklist.
+ * Mirrors the official MOHW HWPX form (docs/forms/aed-inspection-form-mohw.hwpx)
+ * verbatim. Group numbers (1~6) and item ordering match the 보건복지부 양식.
  *
- * Categories:
- *  - OPERATION (5)  : functional checks (power/pads/battery/connectors/exterior)
- *  - BOX (4)        : storage cabinet (alarm/guide/emergency contact/CPR card)
- *  - LOCATION (2)   : physical placement (entrance visibility/directional sign)
- *  - DOCS (1)       : on-site documentation
- *  - ACCESS (1, opt): 24h availability
+ * Groups:
+ *  1. 본체 작동 상태 확인 (3 items: OP_POWER, OP_PAD, OP_BATTERY)
+ *  2. 보관함 상태 (5 items: BX_ALARM, BX_GUIDE, BX_EMG, BX_CPR, BX_EXP)
+ *  3. 자동심장충격기 위치안내 표시 (2 items: LOC_ENT, LOC_DIR)
+ *  4. 관리서류 작성 및 비치 여부 (1 item: DOC_FILE)
+ *  6. 장비 사용 가능 시간 (1 item: TIME_24)
+ *
+ * Group 5 (관리자 변경사항) is metadata — not an OK/NG item, captured on
+ * the device record. Keep group numbering (skipping 5) to align with the
+ * official form layout.
  *
  * Codes are stable identifiers — never rename. Add new items by appending.
  */
 export const INSPECTION_ITEMS = [
-  // OPERATION ---------------------------------------------------------------
+  // 1. 본체 작동 상태 확인 ----------------------------------------------------
   {
     code: "OP_POWER",
     category: "OPERATION",
-    labelKo: "본체 전원 표시등 점멸",
-    labelEn: "Main power indicator blinking"
+    group: 1,
+    sub: "①",
+    labelKo: "본체 작동 상태 확인 (전원 표시 상태등 점멸)",
+    labelEn: "Main unit operating status (power indicator blinking)"
   },
   {
     code: "OP_PAD",
     category: "OPERATION",
+    group: 1,
+    sub: "②",
     labelKo: "환자 부착용 패드 유무",
     labelEn: "Patient pads present"
   },
   {
     code: "OP_BATTERY",
     category: "OPERATION",
-    labelKo: "배터리 잔량 정상",
-    labelEn: "Battery level normal"
-  },
-  {
-    code: "OP_CONNECTOR",
-    category: "OPERATION",
-    labelKo: "패드 커넥터 체결 상태",
-    labelEn: "Pad connector secured"
-  },
-  {
-    code: "OP_EXTERIOR",
-    category: "OPERATION",
-    labelKo: "본체 외관 손상 없음",
-    labelEn: "No exterior damage"
+    group: 1,
+    sub: "③",
+    labelKo: "건전지 충전 상태",
+    labelEn: "Battery charge state"
   },
 
-  // BOX (storage cabinet) ---------------------------------------------------
+  // 2. 보관함 상태 ----------------------------------------------------------
   {
     code: "BX_ALARM",
     category: "BOX",
-    labelKo: "보관함 도난 방지 알람 작동",
-    labelEn: "Cabinet anti-theft alarm working"
+    group: 2,
+    sub: "①",
+    labelKo: "도난경보장치 작동 여부",
+    labelEn: "Anti-theft alarm working"
   },
   {
     code: "BX_GUIDE",
     category: "BOX",
-    labelKo: "보관함 사용 안내 부착",
-    labelEn: "Usage guide posted on cabinet"
+    group: 2,
+    sub: "②",
+    labelKo: "보관함 각종 안내문구 상태",
+    labelEn: "Cabinet guidance labels state"
   },
   {
     code: "BX_EMG",
     category: "BOX",
-    labelKo: "응급 연락망(119) 표기",
-    labelEn: "Emergency contact (119) labeled"
+    group: 2,
+    sub: "③",
+    labelKo: "비상연락망 표시 여부",
+    labelEn: "Emergency contact list displayed"
   },
   {
     code: "BX_CPR",
     category: "BOX",
-    labelKo: "심폐소생술 안내 카드 비치",
-    labelEn: "CPR guide card present"
+    group: 2,
+    sub: "④",
+    labelKo: "심폐소생술 방법 안내책자 여부",
+    labelEn: "CPR guidance booklet present"
   },
   {
     code: "BX_EXP",
     category: "BOX",
-    labelKo: "패드/배터리 유효기간 양호",
-    labelEn: "Pad/battery expiry within validity"
+    group: 2,
+    sub: "⑤",
+    labelKo: "환자부착용 패드 및 건전지 유효기간 표시 여부",
+    labelEn: "Pad/battery expiry date labeled"
   },
 
-  // LOCATION ---------------------------------------------------------------
+  // 3. 자동심장충격기 위치안내 표시 -------------------------------------------
   {
     code: "LOC_ENT",
     category: "LOCATION",
-    labelKo: "출입구에서 시야 확보",
-    labelEn: "Visible from entrance"
+    group: 3,
+    sub: "①",
+    labelKo: "기관(건물) 입구 안내 표지",
+    labelEn: "Building entrance signage"
   },
   {
     code: "LOC_DIR",
     category: "LOCATION",
-    labelKo: "위치 안내 표지판 부착",
-    labelEn: "Directional signage installed"
+    group: 3,
+    sub: "②",
+    labelKo: "기관내 설치 위치 및 방향 표지",
+    labelEn: "Installation location and direction signage"
   },
 
-  // DOCS -------------------------------------------------------------------
+  // 4. 관리서류 작성 및 비치 여부 -------------------------------------------
   {
     code: "DOC_FILE",
     category: "DOCS",
-    labelKo: "점검대장/사용설명서 비치",
-    labelEn: "Inspection log and manual present"
+    group: 4,
+    sub: "",
+    labelKo: "관리서류 작성 및 비치 여부",
+    labelEn: "Management documentation prepared and present"
   },
 
-  // ACCESS -----------------------------------------------------------------
+  // 6. 장비 사용 가능 시간 (group 5 = 관리자 변경사항 metadata, skipped) -------
   {
     code: "TIME_24",
     category: "ACCESS",
-    labelKo: "24시간 접근 가능 (해당 시)",
-    labelEn: "24-hour accessibility (if applicable)"
+    group: 6,
+    sub: "①",
+    labelKo: "24시간 이용 가능",
+    labelEn: "Available 24 hours"
   }
 ] as const
 

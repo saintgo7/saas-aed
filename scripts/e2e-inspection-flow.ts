@@ -24,13 +24,13 @@ import { INSPECTION_ITEMS, type InspectionItems } from "../src/lib/inspection/it
 const SIGNATURE_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII="
 
-const NG_CODE = "OP_EXTERIOR" as const
-const NOTES = "본체 외관 상단 측면 미세 흠집 — 작동 영향 없음, 모니터링"
+const NG_CODE = "BX_EXP" as const // 패드/건전지 유효기간 — realistic NG case
+const NOTES = "보관함 우측 패드 유효기간 라벨 마모로 가독성 저하 — 라벨 재부착 필요"
 const YEAR_MONTH = "2026-05"
 
 type ItemResult = "OK" | "NG"
 
-// Build immutable items map: every code OK except OP_EXTERIOR which is NG.
+// Build immutable items map: every code OK except NG_CODE which is NG.
 function buildItems(): InspectionItems {
   const entries = INSPECTION_ITEMS.map((item) => {
     const result: ItemResult = item.code === NG_CODE ? "NG" : "OK"

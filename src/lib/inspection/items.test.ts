@@ -9,8 +9,8 @@ import {
 } from "./items"
 
 describe("INSPECTION_ITEMS", () => {
-  it("contains the expected number of items (14 = 5 OP + 5 BX + 2 LOC + 1 DOCS + 1 ACCESS)", () => {
-    expect(INSPECTION_ITEMS).toHaveLength(14)
+  it("contains 12 items (3 OP + 5 BX + 2 LOC + 1 DOCS + 1 ACCESS) matching MOHW HWPX form", () => {
+    expect(INSPECTION_ITEMS).toHaveLength(12)
   })
 
   it("has unique codes for all items", () => {
@@ -84,8 +84,8 @@ describe("categoryGroups", () => {
     }
   })
 
-  it("OPERATION has 5, BOX has 5, LOCATION has 2, DOCS has 1, ACCESS has 1", () => {
-    expect(categoryGroups.OPERATION).toHaveLength(5)
+  it("OPERATION has 3, BOX has 5, LOCATION has 2, DOCS has 1, ACCESS has 1 (MOHW HWPX form)", () => {
+    expect(categoryGroups.OPERATION).toHaveLength(3)
     expect(categoryGroups.BOX).toHaveLength(5)
     expect(categoryGroups.LOCATION).toHaveLength(2)
     expect(categoryGroups.DOCS).toHaveLength(1)
