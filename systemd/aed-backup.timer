@@ -1,0 +1,34 @@
+# /etc/systemd/system/aed-backup.timer
+#
+# 매일 02:00 KST 에 aed-backup.service 실행.
+#
+# 설치:
+#   sudo cp systemd/aed-backup.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now aed-backup.timer
+#
+# 상태 확인:
+#   systemctl list-timers aed-backup.timer
+#   systemctl status aed-backup.timer
+#
+# 다음 실행 시각 미리 보기:
+#   systemd-analyze calendar '*-*-* 02:00:00'
+
+[Unit]
+Description=AED Inspection - Daily backup timer (02:00 KST)
+Documentation=https://github.com/saintgo7/saas-aed/blob/main/docs/deployment/abada-65-setup.md
+Requires=aed-backup.service
+
+[Timer]
+# 매일 02:00 (서버 timezone 기준 — Asia/Seoul 권장)
+OnCalendar=*-*-* 02:00:00
+AccuracySec=1min
+
+# 부팅 시 놓친 실행을 1회 따라잡기 (장시간 다운 후 재시작 케이스)
+Persistent=true
+
+# 실행 중 중복 방지
+Unit=aed-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,9 +1,13 @@
 // PDF generator for AED inspection reports.
 //
 // Dependency: `@react-pdf/renderer` (already in package.json).
-// Korean glyphs require a registered TTF — we register Pretendard from
-// /public/fonts/Pretendard-Regular.ttf (and -Bold.ttf when available).
-// Drop the TTFs into public/fonts/ before generating Korean PDFs.
+// Korean glyphs require a registered font — we register Pretendard from
+// /public/fonts/Pretendard-Regular.otf (and -Bold.otf).
+// Drop the OTFs into public/fonts/ before generating Korean PDFs.
+//
+// Note on font styles: Pretendard ships only upright variants. Avoid
+// `fontStyle: "italic"` in component styles or @react-pdf/renderer will
+// fail to resolve the font ("Could not resolve font for Pretendard").
 
 import * as React from "react"
 import {
@@ -16,6 +20,7 @@ import {
   View,
   renderToBuffer,
 } from "@react-pdf/renderer"
+import fs from "node:fs"
 import path from "node:path"
 
 import { getLabels } from "./i18n"
@@ -33,13 +38,21 @@ let fontsRegistered = false
 function registerFontsOnce(): void {
   if (fontsRegistered) return
   // Resolve from project root so this works in dev (next dev) and prod (next start).
-  const fontDir = path.join(process.cwd(), "public", "fonts")
+  // fontkit (used by @react-pdf/renderer server-side) expects an absolute filesystem path.
+  const fontDir = path.resolve(process.cwd(), "public", "fonts")
+  const regularPath = path.join(fontDir, "Pretendard-Regular.otf")
+  const boldPath = path.join(fontDir, "Pretendard-Bold.otf")
+  if (!fs.existsSync(regularPath) || !fs.existsSync(boldPath)) {
+    throw new Error(
+      `Pretendard fonts not found. Place Pretendard-Regular.otf and Pretendard-Bold.otf in ${fontDir}.`,
+    )
+  }
   try {
     Font.register({
       family: "Pretendard",
       fonts: [
-        { src: path.join(fontDir, "Pretendard-Regular.ttf"), fontWeight: 400 },
-        { src: path.join(fontDir, "Pretendard-Bold.ttf"), fontWeight: 700 },
+        { src: regularPath, fontWeight: 400 },
+        { src: boldPath, fontWeight: 700 },
       ],
     })
     // Disable hyphenation so Korean lines do not break with hyphens.
@@ -48,7 +61,7 @@ function registerFontsOnce(): void {
   } catch (error) {
     console.error("Pretendard font registration failed:", error)
     throw new Error(
-      "Pretendard fonts not found. Place Pretendard-Regular.ttf and Pretendard-Bold.ttf in public/fonts/.",
+      "Pretendard font registration failed. Check that the OTF files in public/fonts/ are valid.",
     )
   }
 }
@@ -164,7 +177,8 @@ const styles = StyleSheet.create({
   },
   signatureMissing: {
     color: "#888",
-    fontStyle: "italic",
+    // Note: fontStyle "italic" intentionally omitted — Pretendard ships only
+    // upright variants, and an italic descriptor would fail font resolution.
   },
   notes: {
     padding: 6,

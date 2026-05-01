@@ -48,13 +48,11 @@ async function main() {
       OP_POWER: "OK",
       OP_PAD: "OK",
       OP_BATTERY: "OK",
-      OP_CONNECTOR: "OK",
-      OP_EXTERIOR: "NG",
       BX_ALARM: "OK",
       BX_GUIDE: "OK",
       BX_EMG: "OK",
       BX_CPR: "OK",
-      BX_EXP: "OK",
+      BX_EXP: "NG",
       LOC_ENT: "OK",
       LOC_DIR: "OK",
       DOC_FILE: "OK",
@@ -75,19 +73,30 @@ async function main() {
   const docxEn = await generateDocx(data, "en")
   await writeFile(join(outDir, "sample-report-en.docx"), docxEn)
 
-  let pdfOk = true
+  let pdfKoOk = true
   try {
     console.log("[sample-report] generating PDF (ko)...")
     const pdfKo = await generatePdf(data, "ko")
     await writeFile(join(outDir, "sample-report-ko.pdf"), pdfKo)
   } catch (err) {
-    pdfOk = false
-    console.warn("[sample-report] PDF skipped:", (err as Error).message)
+    pdfKoOk = false
+    console.warn("[sample-report] PDF (ko) skipped:", (err as Error).message)
+  }
+
+  let pdfEnOk = true
+  try {
+    console.log("[sample-report] generating PDF (en)...")
+    const pdfEn = await generatePdf(data, "en")
+    await writeFile(join(outDir, "sample-report-en.pdf"), pdfEn)
+  } catch (err) {
+    pdfEnOk = false
+    console.warn("[sample-report] PDF (en) skipped:", (err as Error).message)
   }
 
   console.log("\n✓ sample-report-ko.docx (" + docxKo.byteLength + " bytes)")
   console.log("✓ sample-report-en.docx (" + docxEn.byteLength + " bytes)")
-  if (pdfOk) console.log("✓ sample-report-ko.pdf")
+  if (pdfKoOk) console.log("✓ sample-report-ko.pdf")
+  if (pdfEnOk) console.log("✓ sample-report-en.pdf")
   console.log("\nLocation:", outDir)
 
   process.exit(0)

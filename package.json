@@ -16,6 +16,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "seed:dev": "tsx scripts/seed-dev.ts",
+    "e2e:flow": "tsx scripts/e2e-inspection-flow.ts",
     "cron:dev": "tsx watch src/server/cron/index.ts",
     "book:build": "bash docs/book/generate.sh",
     "book:verify-screenshots": "bash scripts/verify-screenshots.sh"

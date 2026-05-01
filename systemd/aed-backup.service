@@ -1,0 +1,49 @@
+# /etc/systemd/system/aed-backup.service
+#
+# 설치:
+#   sudo cp systemd/aed-backup.service /etc/systemd/system/
+#   sudo cp systemd/aed-backup.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now aed-backup.timer
+#
+# 수동 실행 (테스트):
+#   sudo systemctl start aed-backup.service
+#   sudo journalctl -u aed-backup.service -f
+#
+# 환경변수는 /data/saas-aed/.env.production 에서 로드.
+
+[Unit]
+Description=AED Inspection - Daily PostgreSQL backup (gpg + R2)
+Documentation=https://github.com/saintgo7/saas-aed/blob/main/docs/deployment/abada-65-setup.md
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=aedops
+Group=aedops
+WorkingDirectory=/data/saas-aed
+EnvironmentFile=/data/saas-aed/.env.production
+ExecStart=/data/saas-aed/scripts/backup.sh
+
+# 보안: 파일시스템 보호
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data/saas-aed/backup
+PrivateTmp=true
+NoNewPrivileges=true
+
+# 타임아웃 (백업이 30분 이상 걸리면 비정상)
+TimeoutStartSec=30min
+
+# 실패 시 재시도 (최대 3회)
+Restart=on-failure
+RestartSec=5min
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aed-backup
+
+[Install]
+WantedBy=multi-user.target
