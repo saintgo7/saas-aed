@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { auth } from "@/lib/auth/auth"
-import { withTenant } from "@/lib/tenant/with-tenant"
+import { ensureReportGenerated } from "@/server/actions/ensure-report"
 
 export const dynamic = "force-dynamic"
 
@@ -10,7 +10,11 @@ interface RouteContext {
 
 /**
  * GET /api/inspections/:id/report?fmt=docx|pdf
- * Returns a redirect to the R2 signed URL for the requested format.
+ *
+ * Returns a redirect to the storage URL for the requested format.
+ * Lazily generates the artifact if it does not yet exist (so users can
+ * download even when they skipped the "send" step).
+ *
  * Tenant-scoped: only the inspection's tenant can download.
  */
 export async function GET(req: NextRequest, ctx: RouteContext) {
@@ -26,25 +30,21 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
   }
 
   try {
-    const [inspection] = await withTenant(session.user.tenantId)
-      .inspections()
-      .findById(ctx.params.id)
-
-    if (!inspection) {
+    const result = await ensureReportGenerated(ctx.params.id, session.user.tenantId)
+    const url = fmt === "pdf" ? result.pdfUrl : result.docxUrl
+    // Resolve relative URLs (local storage adapter returns "/api/local-storage/...")
+    // against the incoming request's origin so NextResponse.redirect gets an absolute URL.
+    const absolute = url.startsWith("http") ? url : new URL(url, req.url).toString()
+    return NextResponse.redirect(absolute, 302)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "INTERNAL_ERROR"
+    if (message === "INSPECTION_NOT_FOUND") {
       return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 })
     }
-
-    const url = fmt === "pdf" ? inspection.pdfUrl : inspection.docxUrl
-    if (!url) {
-      return NextResponse.json(
-        { error: "REPORT_NOT_GENERATED" },
-        { status: 404 }
-      )
-    }
-
-    return NextResponse.redirect(url, 302)
-  } catch (error) {
     console.error("[api] report fetch failed", { id: ctx.params.id, error })
-    return NextResponse.json({ error: "INTERNAL_ERROR" }, { status: 500 })
+    return NextResponse.json(
+      { error: "REPORT_GENERATION_FAILED", message },
+      { status: 500 }
+    )
   }
 }

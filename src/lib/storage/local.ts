@@ -30,13 +30,13 @@ export const localAdapter: StorageAdapter = {
     if (opts?.contentType) {
       await writeFile(`${target}.contenttype`, opts.contentType)
     }
-    const baseUrl = process.env.APP_URL ?? "http://localhost:3000"
-    return { url: `${baseUrl}/api/local-storage/${key}`, sha256 }
+    // Relative URL — same-origin, port-agnostic. Browsers and Next.js
+    // NextResponse.redirect both accept this.
+    return { url: `/api/local-storage/${key}`, sha256 }
   },
 
   async getSignedUrl(key, _expiresInSec) {
-    const baseUrl = process.env.APP_URL ?? "http://localhost:3000"
-    return `${baseUrl}/api/local-storage/${key}`
+    return `/api/local-storage/${key}`
   },
 
   async delete(key) {
