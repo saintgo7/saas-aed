@@ -42,10 +42,17 @@ export default async function SendInspectionPage({ params }: PageProps) {
         <CardHeader>
           <CardTitle>보고서 미리보기</CardTitle>
           <CardDescription>
-            DOCX 또는 PDF 파일로 다운로드할 수 있습니다.
+            브라우저에서 미리 확인하거나 DOCX/PDF로 다운로드.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
+          <a
+            href={`/inspections/${params.id}`}
+            className="flex items-center justify-between rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-900/40"
+          >
+            <span className="font-medium text-brand-800 dark:text-brand-200">웹 미리보기 (HWPX 양식)</span>
+            <span className="text-brand-700 dark:text-brand-300">→</span>
+          </a>
           <a
             href={`/api/inspections/${params.id}/report?fmt=pdf`}
             className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
