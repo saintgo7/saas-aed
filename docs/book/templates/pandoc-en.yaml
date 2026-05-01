@@ -25,10 +25,11 @@ variables:
   citecolor: NavyBlue
   toccolor: black
 
-  # English fonts (Inter preferred; falls back to system fonts)
-  mainfont: "Inter"
-  sansfont: "Inter"
-  monofont: "JetBrains Mono"
+  # English fonts — using macOS system fonts
+  # Replace with Inter if installed: brew install --cask font-inter
+  mainfont: "Helvetica Neue"
+  sansfont: "Helvetica Neue"
+  monofont: "Menlo"
 
   title-meta: "Building an AED Inspection SaaS from Zero"
   author-meta: "e8both"

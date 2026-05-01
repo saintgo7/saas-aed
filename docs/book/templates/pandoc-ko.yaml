@@ -26,13 +26,14 @@ variables:
   citecolor: NavyBlue
   toccolor: black
 
-  # Korean fonts (Pretendard preferred; falls back to Apple SD Gothic Neo / Noto)
-  mainfont: "Pretendard Variable"
-  sansfont: "Pretendard Variable"
-  monofont: "JetBrains Mono"
-  CJKmainfont: "Pretendard Variable"
-  CJKsansfont: "Pretendard Variable"
-  CJKmonofont: "D2Coding"
+  # Korean fonts — using macOS system fonts (Apple SD Gothic Neo)
+  # Replace with Pretendard if installed: brew install --cask font-pretendard
+  mainfont: "Apple SD Gothic Neo"
+  sansfont: "Apple SD Gothic Neo"
+  monofont: "Menlo"
+  CJKmainfont: "Apple SD Gothic Neo"
+  CJKsansfont: "Apple SD Gothic Neo"
+  CJKmonofont: "Apple SD Gothic Neo"
 
   # Title page
   title-meta: "AED 점검 SaaS, 0에서 운영까지"
