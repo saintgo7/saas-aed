@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+.next/
+dist/
+out/
+build/
+
+# Environment
+.env
+.env.local
+.env.production
+.env.tunnel
+*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/
+playwright-report/
+test-results/
+
+# Drizzle
+drizzle/meta/
+
+# Backups (local only)
+backup/
+*.gpg
+*.dump
+
+# Cloudflared credentials
+cloudflared/*.json
+cloudflared/cert.pem
+
+# Book build artifacts
+docs/book/build/
+docs/book/*.pdf
+docs/book/*.docx
+
+# Misc
+.cache/
+.turbo/

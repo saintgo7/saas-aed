@@ -1,0 +1,45 @@
+name: Deploy to abada-65
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ABADA65_HOST }}
+          username: ${{ secrets.ABADA65_USER }}
+          key: ${{ secrets.ABADA65_SSH_KEY }}
+          port: ${{ secrets.ABADA65_PORT }}
+          script: |
+            set -euo pipefail
+            cd /data/saas-aed
+            export APP_TAG=${{ github.sha }}
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose pull app cron-worker
+            docker compose up -d --no-deps app cron-worker
+            docker image prune -f
+
+      - name: Health check
+        run: |
+          sleep 15
+          for i in {1..10}; do
+            if curl -fsS https://aed.abada.co.kr/api/health > /dev/null; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying..."
+            sleep 5
+          done
+          echo "Health check failed after 10 attempts"
+          exit 1

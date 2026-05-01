@@ -1,0 +1,51 @@
+# Pandoc defaults — Korean edition (DOCX/PDF via xelatex)
+# Usage:
+#   pandoc --defaults=docs/book/templates/pandoc-ko.yaml ...
+
+from: markdown+yaml_metadata_block+raw_html
+pdf-engine: xelatex
+toc: true
+toc-depth: 3
+number-sections: true
+top-level-division: chapter
+
+# Variables passed to LaTeX template
+variables:
+  documentclass: book
+  papersize: a4
+  fontsize: 10.5pt
+  geometry:
+    - top=22mm
+    - bottom=24mm
+    - left=22mm
+    - right=22mm
+  linestretch: 1.45
+  colorlinks: true
+  linkcolor: NavyBlue
+  urlcolor: NavyBlue
+  citecolor: NavyBlue
+  toccolor: black
+
+  # Korean fonts (Pretendard preferred; falls back to Apple SD Gothic Neo / Noto)
+  mainfont: "Pretendard Variable"
+  sansfont: "Pretendard Variable"
+  monofont: "JetBrains Mono"
+  CJKmainfont: "Pretendard Variable"
+  CJKsansfont: "Pretendard Variable"
+  CJKmonofont: "D2Coding"
+
+  # Title page
+  title-meta: "AED 점검 SaaS, 0에서 운영까지"
+  author-meta: "e8both"
+  lang: "ko-KR"
+
+# Filters / extensions
+metadata:
+  lang: ko-KR
+
+# Image and code rendering
+highlight-style: tango
+default-image-extension: png
+
+# Section numbering
+shift-heading-level-by: 0

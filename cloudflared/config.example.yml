@@ -1,0 +1,19 @@
+# Cloudflare Tunnel config (example)
+# Copy to config.yml and fill in your tunnel UUID + credentials.
+# Then create a DNS record in Cloudflare: aed.abada.co.kr → <tunnel-uuid>.cfargotunnel.com (CNAME)
+#
+# Setup:
+#   cloudflared tunnel login
+#   cloudflared tunnel create aed-tunnel
+#   cloudflared tunnel route dns aed-tunnel aed.abada.co.kr
+#
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /etc/cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+ingress:
+  - hostname: aed.abada.co.kr
+    service: http://nginx:80
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: false
+  - service: http_status:404

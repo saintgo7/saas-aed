@@ -1,0 +1,43 @@
+# Pandoc defaults — English edition (DOCX/PDF via xelatex)
+# Usage:
+#   pandoc --defaults=docs/book/templates/pandoc-en.yaml ...
+
+from: markdown+yaml_metadata_block+raw_html
+pdf-engine: xelatex
+toc: true
+toc-depth: 3
+number-sections: true
+top-level-division: chapter
+
+variables:
+  documentclass: book
+  papersize: a4
+  fontsize: 10.5pt
+  geometry:
+    - top=22mm
+    - bottom=24mm
+    - left=22mm
+    - right=22mm
+  linestretch: 1.45
+  colorlinks: true
+  linkcolor: NavyBlue
+  urlcolor: NavyBlue
+  citecolor: NavyBlue
+  toccolor: black
+
+  # English fonts (Inter preferred; falls back to system fonts)
+  mainfont: "Inter"
+  sansfont: "Inter"
+  monofont: "JetBrains Mono"
+
+  title-meta: "Building an AED Inspection SaaS from Zero"
+  author-meta: "e8both"
+  lang: "en-US"
+
+metadata:
+  lang: en-US
+
+highlight-style: tango
+default-image-extension: png
+
+shift-heading-level-by: 0
