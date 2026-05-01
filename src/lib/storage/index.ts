@@ -1,9 +1,10 @@
 import { r2Adapter } from "./r2"
+import { localAdapter } from "./local"
 
 /**
- * Object storage abstraction. Concrete implementation defaults to Cloudflare R2.
- * Replace `storage` with a different adapter to switch providers without
- * touching call sites (signature upload, document upload, etc.).
+ * Object storage abstraction. Concrete implementation defaults to Cloudflare R2,
+ * but switches to a local filesystem adapter when DEMO_MODE=true so signature
+ * uploads and document storage work without R2 credentials.
  */
 export interface StorageAdapter {
   upload(
@@ -15,6 +16,11 @@ export interface StorageAdapter {
   delete(key: string): Promise<void>
 }
 
-export { r2Adapter }
+export { r2Adapter, localAdapter }
 
-export const storage: StorageAdapter = r2Adapter
+const useLocal =
+  process.env.DEMO_MODE === "true" ||
+  process.env.STORAGE_DRIVER === "local" ||
+  !process.env.R2_ACCOUNT_ID
+
+export const storage: StorageAdapter = useLocal ? localAdapter : r2Adapter

@@ -1,5 +1,6 @@
 import type { ReactElement } from "react"
 import { resendAdapter } from "./resend"
+import { consoleAdapter } from "./console"
 
 export interface EmailAttachment {
   readonly filename: string
@@ -18,6 +19,12 @@ export interface EmailAdapter {
   send(opts: EmailSendOptions): Promise<{ id: string }>
 }
 
-export { resendAdapter }
+export { resendAdapter, consoleAdapter }
 
-export const email: EmailAdapter = resendAdapter
+const useConsole =
+  process.env.DEMO_MODE === "true" ||
+  process.env.EMAIL_DRIVER === "console" ||
+  !process.env.RESEND_API_KEY ||
+  process.env.RESEND_API_KEY.startsWith("re_dev")
+
+export const email: EmailAdapter = useConsole ? consoleAdapter : resendAdapter
