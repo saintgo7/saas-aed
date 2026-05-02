@@ -5,21 +5,42 @@
 ## Project context
 
 - **Domain**: 자동심장충격기(AED) 다기관 점검 관리 SaaS
-- **Hosting**: abada-65 self-hosted (per `/data/saas-aed/`)
-- **Edge**: Cloudflare Free (DNS · CDN · WAF · Tunnel · R2)
+- **Production URL**: `https://aed.abada.kr`
+- **Hosting**: abada-65 self-hosted at `/data/abada-kr/aed-abada-kr/aed.abada.kr/`
+- **Edge**: Cloudflare Free (DNS · CDN · WAF · Tunnel · R2) — single host-level tunnel `e8e3c4a4-...`
 - **Stack**: Next.js 14 App Router · Drizzle ORM · PostgreSQL 16 · Redis 7 · Auth.js v5 (Magic Link via Resend) · Docker Compose
 
 ## Hard rules
 
 1. **No Supabase, no Vercel.** Self-host everything on abada-65.
-2. **All persistent data lives under `/data/saas-aed/`** on the host (per abada-65 convention; `/home` is forbidden).
-3. **Multi-tenant guard 3계층** is non-negotiable:
+2. **Follow abada-65 directory convention** — never invent a new top-level (`/data/saas-aed/` is forbidden):
+   - Layout: `/data/{org-tld}/{project-org}/{full-domain}/`
+   - This project: `/data/abada-kr/aed-abada-kr/aed.abada.kr/`
+   - Other orgs in use: `abada-co-kr`, `abada-kr`, `pamout-com`
+   - Inside the domain folder: `docker-compose.yml`, `.env`, `src/`, `data/postgres/`, `data/redis/`
+3. **Port allocation in 10xxx slot range** — bind only to `127.0.0.1`; external traffic via Cloudflare tunnel only:
+   - This project: `127.0.0.1:10370 → app:3000` (postgres/redis NOT exposed)
+   - Reserved slots: 10371 staging-aed, 10372 future split-api
+4. **Cloudflared single host tunnel** — never run cloudflared inside compose. Add hostname → `localhost:10xxx` ingress to `/etc/cloudflared/config.yml`, then `systemctl reload cloudflared`.
+5. **Multi-tenant guard 3계층** is non-negotiable:
    - L1: Auth.js callbacks inject `session.user.tenantId`
    - L2: `src/middleware.ts` validates and forwards `x-tenant-id`
    - L3: Direct `db.*` calls forbidden — use `withTenant(tenantId).devices()` etc.
-4. **External services through adapters only** (`src/lib/storage`, `src/lib/email`). Never import `resend` or `@aws-sdk/client-s3` outside those folders.
-5. **Secrets via `.env.production`** with file mode 600, root-owned. Never commit.
-6. **Backups** are gpg-encrypted nightly to R2 — no plaintext dumps anywhere.
+6. **External services through adapters only** (`src/lib/storage`, `src/lib/email`). Never import `resend` or `@aws-sdk/client-s3` outside those folders.
+7. **Secrets via `.env`** (filename matches abada-65 convention) with file mode 600, blackpc-owned. Never commit.
+8. **Backups** are gpg-encrypted nightly to R2 — no plaintext dumps anywhere. Hook into `/data/backups/daily-backup.sh`.
+
+## abada-65 directory convention (host-wide)
+
+| Pattern | Example |
+|---------|---------|
+| `/data/{org}/{name}-{org}/{name}.{org}/` (multi-project org) | `/data/abada-kr/k-guide-abada-kr/k-guide.abada.kr/` |
+| `/data/{org}/{full-domain}/` (single-project org) | `/data/pamout-com/pamout.com/` |
+| Docker network | `{name}-prod-net` (e.g., `aed-prod-net`) |
+| Container names | `{name}-{role}` (e.g., `aed-app`, `aed-postgres`, `aed-redis`, `aed-cron`) |
+| Volumes | relative bind mount `./data/postgres`, `./data/redis` (NEVER absolute) |
+| Compose project name | `name:` field set explicitly (e.g., `name: aed`) |
+| Infra-config sync | mirror `docker-compose.yml` to `/data/infra-config/projects/{org}/{name}-{org}/{full-domain}/` |
 
 ## Coding conventions
 
@@ -96,4 +117,22 @@ pnpm typecheck && pnpm lint && pnpm test
 pnpm book:build               # build PDF/DOCX (ko + en)
 pnpm book:verify-screenshots  # check capture markers
 docker compose up -d          # full stack
+```
+
+## Production ops (abada-65)
+
+```bash
+# SSH in, then:
+cd /data/abada-kr/aed-abada-kr/aed.abada.kr
+
+docker compose ps                      # status
+docker compose logs -f app             # tail app logs
+docker compose pull && docker compose up -d   # roll forward
+docker compose run --rm app pnpm db:migrate   # run migrations
+curl -I http://127.0.0.1:10370/api/health     # internal health probe
+curl -I https://aed.abada.kr/api/health       # external (via Cloudflare tunnel)
+
+# Cloudflared ingress (host-level, NOT compose):
+sudo vi /etc/cloudflared/config.yml    # add hostname rule
+sudo systemctl reload cloudflared
 ```
