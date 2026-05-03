@@ -71,7 +71,8 @@ async function getDemoSession(): Promise<Session | null> {
       .from(schema.users)
       .orderBy(asc(schema.users.createdAt))
       .limit(20)
-    const admin = users.find((u) => u.role === "ADMIN") ?? users.find((u) => u.role === "INSPECTOR") ?? users[0]
+    // Demo prefers INSPECTOR — limits blast radius vs ADMIN (no device CRUD, no user invites).
+    const admin = users.find((u) => u.role === "INSPECTOR") ?? users.find((u) => u.role === "ADMIN") ?? users[0]
     if (!admin) return null
     _demoSession = {
       user: {
