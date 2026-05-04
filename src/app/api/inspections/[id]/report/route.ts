@@ -32,10 +32,16 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
   try {
     const result = await ensureReportGenerated(ctx.params.id, session.user.tenantId)
     const url = fmt === "pdf" ? result.pdfUrl : result.docxUrl
-    // Resolve relative URLs (local storage adapter returns "/api/local-storage/...")
-    // against the incoming request's origin so NextResponse.redirect gets an absolute URL.
-    const absolute = url.startsWith("http") ? url : new URL(url, req.url).toString()
-    return NextResponse.redirect(absolute, 302)
+
+    // Send a Location header — browsers resolve relative paths against the
+    // user's address bar (e.g. https://aed.abada.kr). Using NextResponse.redirect
+    // with new URL(url, req.url) leaks the standalone server's internal
+    // 0.0.0.0:3000 origin to the client. For absolute external URLs (real R2)
+    // we pass through unchanged.
+    if (url.startsWith("http")) {
+      return NextResponse.redirect(url, 302)
+    }
+    return new NextResponse(null, { status: 302, headers: { Location: url } })
   } catch (error) {
     const message = error instanceof Error ? error.message : "INTERNAL_ERROR"
     if (message === "INSPECTION_NOT_FOUND") {
