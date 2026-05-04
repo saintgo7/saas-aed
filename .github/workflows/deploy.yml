@@ -1,5 +1,13 @@
 name: Deploy to abada-65
 
+# Connection path: GitHub runner → Cloudflare Access (service-token) → s65.abada.co.kr → blackpc@127.0.0.1:5022
+#
+# Required secrets (production environment):
+#   ABADA65_USER          — SSH user on abada-65 (blackpc)
+#   ABADA65_SSH_KEY       — deploy-only ed25519 private key
+#   CF_ACCESS_CLIENT_ID   — Cloudflare Access service token ID
+#   CF_ACCESS_CLIENT_SECRET — Cloudflare Access service token secret
+
 on:
   workflow_run:
     workflows: ["CI"]
@@ -13,35 +21,63 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - name: Install cloudflared
+        run: |
+          curl -sSL -o /tmp/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+          sudo install -m 0755 /tmp/cloudflared /usr/local/bin/cloudflared
+          cloudflared --version
 
-      - name: SSH deploy
+      - name: Open Cloudflare Access TCP tunnel → localhost:5022
+        env:
+          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          nohup cloudflared access tcp \
+            --hostname s65.abada.co.kr \
+            --url localhost:5022 \
+            > /tmp/cloudflared.log 2>&1 &
+          # Wait for the local listener to come up
+          for i in {1..15}; do
+            if nc -z localhost 5022; then echo "tunnel up"; exit 0; fi
+            sleep 1
+          done
+          echo "::error::cloudflared failed to listen on localhost:5022"
+          tail -50 /tmp/cloudflared.log
+          exit 1
+
+      - name: SSH deploy via tunnel
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.ABADA65_HOST }}
+          host: localhost
+          port: 5022
           username: ${{ secrets.ABADA65_USER }}
           key: ${{ secrets.ABADA65_SSH_KEY }}
-          port: ${{ secrets.ABADA65_PORT }}
           script: |
             set -euo pipefail
-            cd /data/abada-kr/aed-abada-kr/aed.abada.kr
+            BASE=/data/abada-kr/aed-abada-kr/aed.abada.kr
+            cd "$BASE/src"
+            git -c safe.directory='*' pull --ff-only origin main
+            cd "$BASE"
             export APP_TAG=${{ github.sha }}
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker compose pull app cron-worker
-            docker compose run --rm app pnpm db:migrate
-            docker compose up -d --no-deps app cron-worker
+            # ghcr requires `docker login`; CI publishes the image via GITHUB_TOKEN.
+            # Host login is one-shot (already configured); pull falls back to local build.
+            docker-compose pull app 2>&1 | tail -5 || true
+            # Run migrations via the migrator profile (separate image with drizzle-kit).
+            # Idempotent: drizzle-kit skips already-applied migrations.
+            docker-compose --profile tools build migrator
+            docker-compose --profile tools run --rm migrator
+            docker-compose up -d --no-deps app
             docker image prune -f
 
       - name: Health check
         run: |
-          sleep 15
-          for i in {1..10}; do
+          for i in {1..15}; do
             if curl -fsS https://aed.abada.kr/api/health > /dev/null; then
-              echo "Health check passed"
+              echo "Health check passed (attempt $i)"
               exit 0
             fi
             echo "Attempt $i failed, retrying..."
             sleep 5
           done
-          echo "Health check failed after 10 attempts"
+          echo "::error::Health check failed after 15 attempts"
           exit 1
