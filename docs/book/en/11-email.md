@@ -9,6 +9,8 @@ screenshots:
   - ch11-step03-email-deliverability-dashboard
   - ch11-step04-spf-dkim-dmarc-records
   - ch11-step05-bounce-handling-log
+  - ch11-step06-email-adapter-auto-switch
+  - ch11-step07-console-adapter-demo-log
 ---
 
 # Chapter 11. Resend + React Email Attachments
@@ -124,6 +126,88 @@ case "email.bounced": {
 Splitting domains is a firewall: a problem with one type of mail does not
 kill the other.
 
+## 11.7 Adapter Auto-Switch — Resend, Console, and Demo Safety
+
+One of the worst incidents on the first production deploy was a container
+holding a dummy Resend key (`re_dev_xxx`) hitting the real Resend endpoint,
+returning 401, and surfacing as a red Server Component error (Appendix E
+case 4). The policy since then is simple — **decide the adapter at module
+load time, not at call time**.
+
+```ts
+// src/lib/email/index.ts
+import { resendAdapter } from "./resend"
+import { consoleAdapter } from "./console"
+
+export interface EmailAdapter {
+  send(opts: EmailSendOptions): Promise<{ id: string }>
+}
+
+const useConsole =
+  process.env.DEMO_MODE === "true" ||
+  process.env.EMAIL_DRIVER === "console" ||
+  !process.env.RESEND_API_KEY ||
+  process.env.RESEND_API_KEY.startsWith("re_dev")
+
+export const email: EmailAdapter = useConsole ? consoleAdapter : resendAdapter
+```
+
+The selection rule is a four-level OR.
+
+| Condition | Adapter |
+|---|---|
+| `DEMO_MODE=true` | console (demo mode) |
+| `EMAIL_DRIVER=console` | console (forced override) |
+| `RESEND_API_KEY` missing | console (safe fallback) |
+| `RESEND_API_KEY=re_dev*` | console (dev key pattern) |
+| otherwise | Resend (real send) |
+
+The intent is **fail-safe**, not fail-closed. If the operator forgets to
+provide a key, external sends are blocked and we log instead. "Demo
+stopped because a secret was missing" is a scenario we never want.
+
+### 11.7.1 consoleAdapter — What We Log
+
+```ts
+// src/lib/email/console.ts (excerpt)
+export const consoleAdapter: EmailAdapter = {
+  async send(opts) {
+    const id = `console_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+    console.log("[email/console]", {
+      id, to: opts.to, subject: opts.subject,
+      attachments: opts.attachments?.map((a) => ({
+        filename: a.filename, size: a.content.length
+      }))
+    })
+    return { id }
+  }
+}
+```
+
+We never log the body — protecting personal data and signature attachments.
+We log subject, recipient, attachment filenames, and sizes. To return to
+production it is enough to set `RESEND_API_KEY`; calling code does not
+change.
+
+### 11.7.2 Same Pattern, Same Safety — Storage
+
+`src/lib/storage/index.ts` follows the same pattern (chapter 16). When
+`DEMO_MODE` is set or `R2_ACCOUNT_ID` is missing, `localAdapter` writes
+files to `/tmp/aed-storage/` and returns a relative
+`/api/local-storage/{key}` URL. In production it returns an R2 presigned
+URL. **Every adapter that touches an external service follows the same
+auto-switch rule** — that is the operating principle.
+
+<!-- SCREENSHOT: ch11-step06-email-adapter-auto-switch -->
+![Adapter auto-switch — three outcomes for demo / dev / prod](../assets/screenshots/ch11-step06-email-adapter-auto-switch.png)
+*Figure 11-6. Three combinations of environment variables and the resulting adapter. Calling code is identical.*
+<!-- /SCREENSHOT -->
+
+<!-- SCREENSHOT: ch11-step07-console-adapter-demo-log -->
+![consoleAdapter output — a demo-mode send attempt](../assets/screenshots/ch11-step07-console-adapter-demo-log.png)
+*Figure 11-7. `docker compose logs app`. The `[email/console]` line shows to, subject, and attachment filenames; the body is never logged.*
+<!-- /SCREENSHOT -->
+
 ## Summary
 
 - DNS, not code, decides 80% of deliverability — SPF/DKIM/DMARC are non-negotiable
@@ -143,3 +227,5 @@ report, cleanup, retry — and how they coexist reliably in one container.
 - [ ] `ch11-step03-email-deliverability-dashboard.png`
 - [ ] `ch11-step04-spf-dkim-dmarc-records.png`
 - [ ] `ch11-step05-bounce-handling-log.png`
+- [ ] `ch11-step06-email-adapter-auto-switch.png` — adapter auto-switch
+- [ ] `ch11-step07-console-adapter-demo-log.png` — console output

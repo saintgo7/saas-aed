@@ -9,6 +9,8 @@ screenshots:
   - ch11-step03-email-deliverability-dashboard
   - ch11-step04-spf-dkim-dmarc-records
   - ch11-step05-bounce-handling-log
+  - ch11-step06-email-adapter-auto-switch
+  - ch11-step07-console-adapter-demo-log
 ---
 
 # 11장. Resend + React Email 첨부
@@ -122,6 +124,85 @@ case "email.bounced": {
 
 도메인 분리는 한 종류의 사고가 다른 종류를 죽이지 않게 하는 보호선.
 
+## 11.7 어댑터 자동 전환 — Resend, console, 그리고 시연 안전
+
+운영 1차 배포에서 가장 큰 사고 중 하나는 더미 Resend 키(`re_dev_xxx`)를 가진
+컨테이너가 진짜 Resend 엔드포인트에 401을 던지고, 그 401이 React Server
+Component 에러로 surface된 사건이었다(부록 E 사례 4). 이후 정책은 단순하다 —
+**호출 시점에 결정하지 않고, 모듈 로드 시점에 어댑터를 결정한다**.
+
+```ts
+// src/lib/email/index.ts
+import { resendAdapter } from "./resend"
+import { consoleAdapter } from "./console"
+
+export interface EmailAdapter {
+  send(opts: EmailSendOptions): Promise<{ id: string }>
+}
+
+const useConsole =
+  process.env.DEMO_MODE === "true" ||
+  process.env.EMAIL_DRIVER === "console" ||
+  !process.env.RESEND_API_KEY ||
+  process.env.RESEND_API_KEY.startsWith("re_dev")
+
+export const email: EmailAdapter = useConsole ? consoleAdapter : resendAdapter
+```
+
+자동 선택 규칙은 4단계 OR다.
+
+| 조건 | 동작 |
+|---|---|
+| `DEMO_MODE=true` | console (시연 모드) |
+| `EMAIL_DRIVER=console` | console (강제 override) |
+| `RESEND_API_KEY` 미설정 | console (안전 fallback) |
+| `RESEND_API_KEY=re_dev*` | console (개발 키 패턴) |
+| 그 외 | Resend (실 발송) |
+
+설계 의도는 **fail-closed가 아니라 fail-safe**다. 운영자가 키를 설정하지
+않으면 외부 발송이 차단되고 console에 로그만 남는다. "시크릿이 없어서 시연이
+멈춤" 시나리오는 발생하지 않는다.
+
+### 11.7.1 consoleAdapter — 무엇을 로그에 남기는가
+
+```ts
+// src/lib/email/console.ts (요약)
+export const consoleAdapter: EmailAdapter = {
+  async send(opts) {
+    const id = `console_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+    console.log("[email/console]", {
+      id, to: opts.to, subject: opts.subject,
+      attachments: opts.attachments?.map((a) => ({
+        filename: a.filename, size: a.content.length
+      }))
+    })
+    return { id }
+  }
+}
+```
+
+본문은 로그하지 않는다(개인정보·서명 첨부 노출 방지). subject·받는이·첨부
+파일명·크기만 남긴다. 운영 모드로 복귀할 때 `RESEND_API_KEY`만 채우면 즉시
+실제 발송으로 전환되며, 호출하는 코드는 한 줄도 바꾸지 않는다.
+
+### 11.7.2 같은 패턴, 같은 안전망 — Storage
+
+같은 패턴을 `src/lib/storage/index.ts`도 따른다(16장 참조). DEMO_MODE 또는
+`R2_ACCOUNT_ID` 미설정 시 `localAdapter`가 `/tmp/aed-storage/`에 파일을
+저장하고 `/api/local-storage/{key}` 상대 URL을 반환. 운영 모드에서는 R2
+프리사인 URL을 반환. **외부 서비스 의존성이 있는 모든 어댑터는 같은 자동
+전환 규칙을 따른다**는 것이 본 SaaS의 운영 원칙이다.
+
+<!-- SCREENSHOT: ch11-step06-email-adapter-auto-switch -->
+![어댑터 자동 전환 — DEMO/dev/prod의 3가지 결과](../assets/screenshots/ch11-step06-email-adapter-auto-switch.png)
+*그림 11-6. 환경변수 3가지 조합에 따른 어댑터 선택 표. 호출 코드는 동일.*
+<!-- /SCREENSHOT -->
+
+<!-- SCREENSHOT: ch11-step07-console-adapter-demo-log -->
+![consoleAdapter 출력 — 시연 모드에서 발송 시도](../assets/screenshots/ch11-step07-console-adapter-demo-log.png)
+*그림 11-7. `docker compose logs app`. `[email/console]` 라인에 to·subject·첨부 파일명만 노출, 본문은 보호.*
+<!-- /SCREENSHOT -->
+
 ## 요약
 
 - 코드보다 DNS 가 도달성의 80% 결정 — SPF/DKIM/DMARC 는 협상 불가
@@ -141,3 +222,5 @@ case "email.bounced": {
 - [ ] `ch11-step03-email-deliverability-dashboard.png`
 - [ ] `ch11-step04-spf-dkim-dmarc-records.png`
 - [ ] `ch11-step05-bounce-handling-log.png`
+- [ ] `ch11-step06-email-adapter-auto-switch.png` — 어댑터 자동 전환
+- [ ] `ch11-step07-console-adapter-demo-log.png` — console 출력

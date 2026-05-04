@@ -376,6 +376,126 @@ Prometheus 스택에서 다룬다.
 사고 대응 비용을 합치면 매직링크 도달성 운영 비용보다 훨씬 크다. 본 SaaS의
 선택은 비용 비교에 기반한 합리적 트레이드오프다.
 
+## 7.9 DEMO 모드 — 시연·운영 검증의 무인 인증 우회
+
+운영 도메인에서 처음 만난 큰 함정 하나는 "데이터·로그인·도메인이 모두 살아
+있는데 매직링크만 뺀 시연을 어떻게 안전하게 보여주는가"였다. 운영자가 데모
+페이지에 접근할 때마다 매직링크 메일을 발송하는 것은 비현실적이고(Resend
+크레딧·도달 지연), 비밀번호를 임시로 두는 것은 본 SaaS의 가장 강한 원칙을
+위반한다. 우리의 답은 **`DEMO_MODE=true` 환경변수 + 시드된 INSPECTOR 자동
+로그인 + 미들웨어 엣지 redirect**다. 운영 코드는 한 줄도 분기되지 않은 채,
+환경변수만으로 시연 모드와 실 운영 모드가 갈린다.
+
+### 7.9.1 isDemoMode() + getDemoSession()
+
+`auth()`를 한 단계 감싸 DEMO 모드를 흡수한다. DB 조회는 최대 한 번,
+실패해도 fail-soft.
+
+```ts
+// src/lib/auth/auth.ts
+export const isDemoMode = (): boolean => process.env.DEMO_MODE === "true"
+
+let _demoSession: Session | null = null
+
+async function getDemoSession(): Promise<Session | null> {
+  if (_demoSession) return _demoSession
+  try {
+    const users = await db.select().from(schema.users)
+      .orderBy(asc(schema.users.createdAt)).limit(20)
+    // INSPECTOR 우선 — ADMIN 대비 권한 폭(blast radius)이 좁다
+    const admin = users.find((u) => u.role === "INSPECTOR")
+      ?? users.find((u) => u.role === "ADMIN") ?? users[0]
+    if (!admin) return null
+    _demoSession = {
+      user: { id: admin.id, email: admin.email, name: admin.name,
+              tenantId: admin.tenantId, role: admin.role },
+      expires: new Date(Date.now() + 86_400_000).toISOString()
+    } as Session
+    return _demoSession
+  } catch (error) {
+    console.warn("[auth] demo session lookup failed", error)
+    return null
+  }
+}
+
+export const auth = async (): Promise<Session | null> => {
+  if (isDemoMode()) {
+    const demo = await getDemoSession()
+    if (demo) return demo
+  }
+  return nextAuth.auth()
+}
+```
+
+세 가지 결정이 들어 있다.
+
+1. **INSPECTOR 우선** — ADMIN을 시연용 계정으로 박으면 시연 중 누가 디바이스
+   추가/삭제 같은 파괴적 액션을 누를 수 있다. INSPECTOR는 폼 작성·서명까지만
+   가능하므로 폭발 반경(blast radius)이 좁다.
+2. **module-scope 캐시 `_demoSession`** — `auth()`는 매 요청 호출되므로 매번
+   DB 조회를 하면 P95가 무너진다. 한 번 잡고 프로세스 수명 동안 재사용.
+3. **try/catch fail-soft** — 빌드 시 DB가 없는 경우(Next.js 정적 분석)에도
+   throw하지 않고 `null` 반환. 빌드 산출물은 깨지지 않는다.
+
+### 7.9.2 미들웨어 레벨 redirect — 페이지 redirect로는 부족하다
+
+페이지 `src/app/login/page.tsx` 안에서 `if (isDemoMode()) redirect("/dashboard")`
+를 시도했을 때 운영 환경에서만 redirect가 발화하지 않는 사고가 있었다. 정확한
+원인 분석에 시간을 쓰는 대신 **결정적 우회로**를 택했다 — 미들웨어에서 직접
+처리.
+
+```ts
+// src/middleware.ts
+const DEMO_REDIRECT_PATHS = ["/login", "/login/check-email", "/"]
+
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
+  const demoMode = process.env.DEMO_MODE === "true"
+
+  if (demoMode && DEMO_REDIRECT_PATHS.includes(pathname)) {
+    return NextResponse.redirect(new URL("/dashboard", req.url), 307)
+  }
+  // ... 나머지 인증 로직
+}
+```
+
+미들웨어는 Edge 런타임에서 페이지 평가보다 먼저 응답을 결정한다. Next.js
+빌드 산출물의 어떤 캐시·prerender도 미들웨어 redirect를 우회할 수 없다. 이
+경험은 부록 E 사례 3에 자세히 기록했다.
+
+### 7.9.3 Server Action에도 가드를 — 더미 시크릿 폭발 방지
+
+`requestMagicLink`, `signOutAction` 같은 Server Action도 `isDemoMode()`
+가드가 없으면 더미 Resend 키로 401을 던지고 빨간 Server Component 에러를
+사용자에게 노출한다.
+
+```ts
+// src/lib/auth/actions.ts
+export async function requestMagicLink(_state, formData) {
+  if (isDemoMode()) redirect("/dashboard")
+  // ... 실제 Resend 호출
+}
+```
+
+원칙은 단순하다 — **외부 API에 닿는 모든 진입점의 첫 줄에 가드**. 부록 E
+사례 4에 빨간 화면 캡처와 패치를 함께 둔다.
+
+### 7.9.4 운영 안전 — 자동 어댑터 전환
+
+DEMO_MODE=true가 켜지면 인증뿐 아니라 (a) `src/lib/email/index.ts`가
+`consoleAdapter`로, (b) `src/lib/storage/index.ts`가 `localAdapter`로
+자동 전환된다(11장·16장 참조). DEMO 모드에서 외부 비용이 발생할 가능성이
+0이라는 점이 시연을 안심하고 돌릴 수 있는 이유다. 운영 모드로 복귀할 때는
+`DEMO_MODE=false` (혹은 미설정) + `RESEND_API_KEY` + `R2_ACCOUNT_ID`만
+채우면 즉시 운영 어댑터로 복귀한다.
+
+### 7.9.5 데모 배너 — 사용자에게 명시
+
+모든 `(app)` 라우트의 레이아웃에 amber 색 데모 배너를 노출한다. "지금 보는
+화면은 시연용 시드 데이터이며, 실제 운영 데이터는 별도입니다"를 한 줄로
+알린다. 이 한 줄이 운영 데이터·시연 데이터 혼동 사고를 막는 가장 저렴한
+보험이다.
+
 ## 요약
 
 - Auth.js v5 + Resend 프로바이더 + DrizzleAdapter가 본 SaaS 인증 코어. 이 세

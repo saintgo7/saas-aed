@@ -47,9 +47,9 @@ collect_inputs() {
     [[ "$(basename "$f")" == "00-cover.md" ]] && continue
     out+=("$f")
   done
-  # appendix A..D in order
+  # appendix A..E in order
   if [[ -d "${dir}/appendix" ]]; then
-    for f in "${dir}/appendix"/[A-D]-*.md; do
+    for f in "${dir}/appendix"/[A-E]-*.md; do
       out+=("$f")
     done
   fi

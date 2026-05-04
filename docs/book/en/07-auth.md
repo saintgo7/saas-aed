@@ -393,6 +393,131 @@ algorithm migrations, and incident response add up to far more than
 deliverability operations. The choice is a cost-based, deliberate
 trade-off.
 
+## 7.9 DEMO Mode — Unattended Auth Bypass for Demos and Production Smoke Tests
+
+The first big trap in the production domain was: how do we safely demo a
+fully-live system — real domain, real seed data, real download flow — but
+without sending magic-link emails on every visit? Sending a magic link per
+demo session is impractical (Resend credits, deliverability latency), and
+keeping a temporary password violates the strongest principle of this SaaS.
+Our answer is **`DEMO_MODE=true` plus a seeded INSPECTOR auto-login plus a
+middleware edge redirect**. Production code never branches; an environment
+variable alone separates demo mode from real production.
+
+### 7.9.1 isDemoMode() and getDemoSession()
+
+We wrap `auth()` in a thin layer that absorbs demo mode. At most one DB
+lookup, fail-soft on errors.
+
+```ts
+// src/lib/auth/auth.ts
+export const isDemoMode = (): boolean => process.env.DEMO_MODE === "true"
+
+let _demoSession: Session | null = null
+
+async function getDemoSession(): Promise<Session | null> {
+  if (_demoSession) return _demoSession
+  try {
+    const users = await db.select().from(schema.users)
+      .orderBy(asc(schema.users.createdAt)).limit(20)
+    // INSPECTOR first — ADMIN has a wider blast radius
+    const admin = users.find((u) => u.role === "INSPECTOR")
+      ?? users.find((u) => u.role === "ADMIN") ?? users[0]
+    if (!admin) return null
+    _demoSession = {
+      user: { id: admin.id, email: admin.email, name: admin.name,
+              tenantId: admin.tenantId, role: admin.role },
+      expires: new Date(Date.now() + 86_400_000).toISOString()
+    } as Session
+    return _demoSession
+  } catch (error) {
+    console.warn("[auth] demo session lookup failed", error)
+    return null
+  }
+}
+
+export const auth = async (): Promise<Session | null> => {
+  if (isDemoMode()) {
+    const demo = await getDemoSession()
+    if (demo) return demo
+  }
+  return nextAuth.auth()
+}
+```
+
+Three decisions are baked in.
+
+1. **Prefer INSPECTOR**: handing demo viewers an ADMIN means a stray click
+   could delete devices or invite users mid-demo. INSPECTOR is limited to
+   forms and signatures, narrowing the blast radius.
+2. **Module-scope `_demoSession` cache**: `auth()` runs on every request,
+   so a DB lookup per call would crater P95. We cache once and reuse for
+   the lifetime of the process.
+3. **try/catch fail-soft**: at build time the DB is unreachable (Next.js
+   static analysis). We never throw; we return `null` so the build artifact
+   is intact.
+
+### 7.9.2 Middleware-Level Redirect — Page-Level Was Not Enough
+
+We initially called `if (isDemoMode()) redirect("/dashboard")` inside
+`src/app/login/page.tsx`. Locally it worked. In production it never fired.
+Rather than chase the exact cause we chose a **deterministic edge
+workaround**: middleware handles it directly.
+
+```ts
+// src/middleware.ts
+const DEMO_REDIRECT_PATHS = ["/login", "/login/check-email", "/"]
+
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
+  const demoMode = process.env.DEMO_MODE === "true"
+
+  if (demoMode && DEMO_REDIRECT_PATHS.includes(pathname)) {
+    return NextResponse.redirect(new URL("/dashboard", req.url), 307)
+  }
+  // ... rest of auth logic
+}
+```
+
+Middleware runs in the Edge runtime and decides the response before any
+page evaluation. No build artifact, no cache, no prerender bypasses a
+middleware redirect. Appendix E case 3 has the postmortem.
+
+### 7.9.3 Server Actions Need Guards Too — Defusing Dummy Secrets
+
+Without an `isDemoMode()` guard at the first line, Server Actions like
+`requestMagicLink` and `signOutAction` will hit Resend with the dummy key
+and surface a 401 as a red Server Component error.
+
+```ts
+// src/lib/auth/actions.ts
+export async function requestMagicLink(_state, formData) {
+  if (isDemoMode()) redirect("/dashboard")
+  // ... real Resend call
+}
+```
+
+The principle is simple — **guard at the first line of every entry point
+that may touch an external API**. Appendix E case 4 captures the red page
+plus the patch.
+
+### 7.9.4 Safety Net — Automatic Adapter Switch
+
+When `DEMO_MODE=true` is set, the email adapter
+(`src/lib/email/index.ts`) switches to `consoleAdapter` and the storage
+adapter (`src/lib/storage/index.ts`) switches to `localAdapter` (covered
+in chapters 11 and 16). Demo mode therefore cannot incur external costs,
+which is what makes it safe to leave running. Returning to production is
+just unsetting `DEMO_MODE` (or setting it to `false`) and providing the
+real `RESEND_API_KEY` and `R2_ACCOUNT_ID`.
+
+### 7.9.5 The Demo Banner — Tell the Viewer
+
+Every `(app)` layout displays an amber demo banner. One sentence: "What
+you are seeing is seeded demo data; real production data is separate."
+That single sentence is the cheapest insurance against confusing demo and
+production data.
+
 ## Summary
 
 - Auth.js v5 + Resend provider + DrizzleAdapter is the auth core. The

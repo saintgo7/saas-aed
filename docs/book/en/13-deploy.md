@@ -11,6 +11,9 @@ screenshots:
   - ch13-step05-compose-up-all-healthy
   - ch13-step06-public-url-first-200
   - ch13-step07-github-actions-deploy-yml
+  - ch13-step08-abada65-directory-tree
+  - ch13-step09-host-cloudflared-config
+  - ch13-step10-port-slot-10370
 ---
 
 # Chapter 13. Deploying with Docker Compose and Cloudflare Tunnel
@@ -130,9 +133,120 @@ We started with a BusyBox `wget` health check inside nginx and lost
 production briefly to it. Replaced with a one-liner Node.js fetch (commits
 `49a1976`, `f79a3b1`).
 
-<!-- TODO: Quote the post-incident notes -->
+The seven other pitfalls from the first deploy are catalogued in Appendix
+E — Cloudflare's one-year cache, five consecutive GitHub Actions failures,
+the missing page redirect, the Server Component error, the seed unique
+violation, the standalone container's `0.0.0.0` leak, and the `git pull`
+stash workflow. If this chapter is the assembly manual, Appendix E is the
+emergency-room log right after assembly.
 
-## 13.7 Rollback
+## 13.7 abada-65 Directory, Port, and Tunnel Convention (Real Deployment)
+
+This SaaS lives on the abada-65 host alongside other SaaS projects. The
+host has a stable convention; we follow it without exception.
+
+### 13.7.1 Directory Layout
+
+```
+/data/
+├── abada-kr/
+│   ├── aed-abada-kr/
+│   │   └── aed.abada.kr/         ← this SaaS
+│   │       ├── docker-compose.yml
+│   │       ├── .env              ← 600 mode, owned by blackpc
+│   │       ├── src/              ← Next.js app
+│   │       └── data/
+│   │           ├── postgres/     ← relative bind mount
+│   │           └── redis/
+│   └── k-guide-abada-kr/
+│       └── k-guide.abada.kr/
+└── infra-config/
+    └── projects/.../docker-compose.yml   ← compose mirror
+```
+
+The pattern is `/data/{org}/{name}-{org}/{full-domain}/`. With multiple
+SaaS coexisting on one host, this is the most decisive isolation
+convention. Never use `/home` — another SaaS reaching `~/` could leak
+state.
+
+<!-- SCREENSHOT: ch13-step08-abada65-directory-tree -->
+![/data/abada-kr/.../aed.abada.kr tree](../assets/screenshots/ch13-step08-abada65-directory-tree.png)
+*Figure 13-8. `tree -L 3 /data/abada-kr/aed-abada-kr` on the abada-65 host. One SaaS, one directory.*
+<!-- /SCREENSHOT -->
+
+### 13.7.2 Port Slot — 10xxx Convention with 127.0.0.1 Binding
+
+This SaaS uses `127.0.0.1:10370 → app:3000`. The container is not exposed
+to the network — only the host cloudflared can reach it. Slot 10371 is
+reserved for staging-aed, 10372 for a future split-api.
+
+```yaml
+# docker-compose.yml (excerpt)
+services:
+  app:
+    ports:
+      - "127.0.0.1:10370:3000"   # not exposed externally
+    networks: [aed-prod-net]
+  postgres:
+    # no ports — internal network only
+    networks: [aed-prod-net]
+  redis:
+    networks: [aed-prod-net]
+
+networks:
+  aed-prod-net:
+    name: aed-prod-net
+```
+
+postgres and redis have no external ports at all. Only the app container
+on the same `aed-prod-net` reaches them. The earlier in-compose nginx +
+cloudflared have been **removed** — the host-level cloudflared is the
+single source of truth.
+
+<!-- SCREENSHOT: ch13-step10-port-slot-10370 -->
+![ss -tnlp | grep 10370 — listens only on 127.0.0.1](../assets/screenshots/ch13-step10-port-slot-10370.png)
+*Figure 13-9. Host port binding shown by `ss -tnlp`. The bind address is `127.0.0.1`, not `0.0.0.0`.*
+<!-- /SCREENSHOT -->
+
+### 13.7.3 Host-Level cloudflared, Single Tunnel
+
+cloudflared does not run as a container. A single systemd-managed tunnel
+on the host handles ingress for every SaaS.
+
+```yaml
+# /etc/cloudflared/config.yml (excerpt)
+tunnel: e8e3c4a4-...
+credentials-file: /etc/cloudflared/e8e3c4a4-....json
+
+ingress:
+  - hostname: aed.abada.kr
+    service: http://localhost:10370
+  - hostname: k-guide.abada.kr
+    service: http://localhost:10380
+  - service: http_status:404
+```
+
+Adding a SaaS means adding one ingress line and running
+`systemctl reload cloudflared`. cloudflared is no longer in this SaaS's
+docker-compose (split out in commit `23c765b`).
+
+<!-- SCREENSHOT: ch13-step09-host-cloudflared-config -->
+![Host cloudflared config — single tunnel, multiple ingresses](../assets/screenshots/ch13-step09-host-cloudflared-config.png)
+*Figure 13-10. /etc/cloudflared/config.yml. One tunnel routes every SaaS hostname on the host.*
+<!-- /SCREENSHOT -->
+
+### 13.7.4 .env Filename and Compose v1 Compatibility
+
+The previous `.env.production` is now plain `.env` to match the abada-65
+convention. Some hosts still ship Compose v1, so the recommended invocation
+prefers `docker compose` and falls back to `docker-compose`.
+
+```bash
+docker compose --env-file .env up -d 2>/dev/null || \
+docker-compose --env-file .env up -d
+```
+
+## 13.8 Rollback
 
 ```bash
 docker compose down
@@ -163,3 +277,6 @@ and an R2 mirror — and explain why we rehearse recovery every six months.
 - [ ] `ch13-step05-compose-up-all-healthy.png`
 - [ ] `ch13-step06-public-url-first-200.png`
 - [ ] `ch13-step07-github-actions-deploy-yml.png`
+- [ ] `ch13-step08-abada65-directory-tree.png` — abada-65 directory convention
+- [ ] `ch13-step09-host-cloudflared-config.png` — host cloudflared single tunnel
+- [ ] `ch13-step10-port-slot-10370.png` — 127.0.0.1:10370 binding
