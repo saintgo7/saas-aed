@@ -15,6 +15,15 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 
+# ── migrator ──
+# One-shot image with drizzle-kit + tsx. Used in prod for `pnpm db:migrate`
+# and `pnpm seed:cnu`. Build: `docker build -t aed-migrator --target migrator .`
+FROM base AS migrator
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+CMD ["pnpm", "db:migrate"]
+
 # ── runtime ──
 FROM node:22-alpine AS runner
 WORKDIR /app
