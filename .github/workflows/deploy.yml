@@ -5,10 +5,11 @@ on:
     workflows: ["CI"]
     types: [completed]
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -23,10 +24,11 @@ jobs:
           port: ${{ secrets.ABADA65_PORT }}
           script: |
             set -euo pipefail
-            cd /data/saas-aed
+            cd /data/abada-kr/aed-abada-kr/aed.abada.kr
             export APP_TAG=${{ github.sha }}
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker compose pull app cron-worker
+            docker compose run --rm app pnpm db:migrate
             docker compose up -d --no-deps app cron-worker
             docker image prune -f
 
@@ -34,7 +36,7 @@ jobs:
         run: |
           sleep 15
           for i in {1..10}; do
-            if curl -fsS https://aed.abada.co.kr/api/health > /dev/null; then
+            if curl -fsS https://aed.abada.kr/api/health > /dev/null; then
               echo "Health check passed"
               exit 0
             fi
