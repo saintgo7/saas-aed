@@ -36,8 +36,7 @@ coverage/
 playwright-report/
 test-results/
 
-# Drizzle
-drizzle/meta/
+# Drizzle — meta/ MUST be checked in (drizzle-kit needs _journal.json to apply)
 
 # Backups (local only)
 backup/
