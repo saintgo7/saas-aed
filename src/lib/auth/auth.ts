@@ -11,7 +11,8 @@ declare module "next-auth" {
       email: string
       name: string
       tenantId: string
-      role: "SYSTEM_ADMIN" | "ADMIN" | "INSPECTOR"
+      departmentId: string | null
+      role: "SUPER_ADMIN" | "HQ_ADMIN" | "DEPT_MANAGER" | "INSPECTOR" | "SYSTEM_ADMIN" | "ADMIN"
     }
   }
 }
@@ -37,6 +38,7 @@ const nextAuth = NextAuth({
         if (dbUser[0]) {
           token.sub = dbUser[0].id
           token.tenantId = dbUser[0].tenantId
+          token.departmentId = dbUser[0].departmentId ?? null
           token.role = dbUser[0].role
           token.name = dbUser[0].name
         }
@@ -47,7 +49,8 @@ const nextAuth = NextAuth({
       if (token.sub) {
         session.user.id = token.sub
         session.user.tenantId = token.tenantId as string
-        session.user.role = token.role as "SYSTEM_ADMIN" | "ADMIN" | "INSPECTOR"
+        session.user.departmentId = (token.departmentId as string | null) ?? null
+        session.user.role = token.role as "SUPER_ADMIN" | "HQ_ADMIN" | "DEPT_MANAGER" | "INSPECTOR" | "SYSTEM_ADMIN" | "ADMIN"
       }
       return session
     }
@@ -80,6 +83,7 @@ async function getDemoSession(): Promise<Session | null> {
         email: admin.email,
         name: admin.name,
         tenantId: admin.tenantId,
+        departmentId: admin.departmentId ?? null,
         role: admin.role
       },
       expires: new Date(Date.now() + 86_400_000).toISOString()
