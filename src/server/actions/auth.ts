@@ -2,15 +2,22 @@
 
 import { z } from "zod"
 import { redirect } from "next/navigation"
-import { signIn, signOut } from "@/lib/auth/auth"
+import { signIn, signOut, isDemoMode } from "@/lib/auth/auth"
 
 const emailSchema = z.string().email("올바른 이메일 형식이 아닙니다.")
 
 /**
  * Sends a magic-link email via Auth.js Resend provider.
  * Auth.js will redirect the user to /login/check-email on success.
+ *
+ * In DEMO mode the user is already auto-authenticated via the seeded
+ * session — bypass Resend entirely and route straight to /dashboard.
  */
 export async function requestMagicLink(formData: FormData): Promise<void> {
+  if (isDemoMode()) {
+    redirect("/dashboard")
+  }
+
   const raw = formData.get("email")
   let email: string
   try {
@@ -35,8 +42,12 @@ export async function requestMagicLink(formData: FormData): Promise<void> {
 
 /**
  * Signs the user out and returns to the login page.
+ * In DEMO mode just round-trips back to /dashboard since auth is bypassed.
  */
 export async function signOutAction(): Promise<void> {
+  if (isDemoMode()) {
+    redirect("/dashboard")
+  }
   try {
     await signOut({ redirect: false })
   } catch (error) {
