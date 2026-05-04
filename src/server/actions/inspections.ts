@@ -68,23 +68,60 @@ export async function createInspection(
       throw new Error("해당 장비를 찾을 수 없습니다.")
     }
 
-    const [row] = await scope.inspections().create({
-      tenantId: session.user.tenantId,
-      deviceId: parsed.deviceId,
-      inspectorId: session.user.id,
-      yearMonth: currentYearMonth(),
-      items: parsed.items,
-      notes: parsed.notes ?? null
-    })
-    if (!row) {
-      throw new Error("점검 기록 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+    const yearMonth = currentYearMonth()
+
+    // Upsert: if a record for (tenant, device, yearMonth) already exists, refresh
+    // its items/notes/inspector and return its id. This makes the action
+    // idempotent so retries (and demo walkthroughs against pre-seeded data) work.
+    const existing = await db
+      .select({ id: schema.inspections.id })
+      .from(schema.inspections)
+      .where(
+        and(
+          eq(schema.inspections.tenantId, session.user.tenantId),
+          eq(schema.inspections.deviceId, parsed.deviceId),
+          eq(schema.inspections.yearMonth, yearMonth)
+        )
+      )
+      .limit(1)
+
+    let inspectionId: string
+    if (existing[0]) {
+      inspectionId = existing[0].id
+      await db
+        .update(schema.inspections)
+        .set({
+          items: parsed.items,
+          notes: parsed.notes ?? null,
+          inspectorId: session.user.id,
+          // clear any stale signature/report so the user re-signs/re-sends
+          signatureUrl: null,
+          signatureSha256: null,
+          docxUrl: null,
+          pdfUrl: null,
+          emailSentAt: null
+        })
+        .where(eq(schema.inspections.id, inspectionId))
+    } else {
+      const [row] = await scope.inspections().create({
+        tenantId: session.user.tenantId,
+        deviceId: parsed.deviceId,
+        inspectorId: session.user.id,
+        yearMonth,
+        items: parsed.items,
+        notes: parsed.notes ?? null
+      })
+      if (!row) {
+        throw new Error("점검 기록 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+      }
+      inspectionId = row.id
     }
 
     revalidatePath("/dashboard")
     revalidatePath("/history")
     revalidatePath(`/devices/${parsed.deviceId}`)
 
-    return { id: row.id }
+    return { id: inspectionId }
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("해당 장비")) throw error
     console.error("[inspections] createInspection failed", { error })
