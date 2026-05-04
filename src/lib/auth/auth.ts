@@ -57,8 +57,8 @@ const nextAuth = NextAuth({
 
 export const { handlers, signIn, signOut } = nextAuth
 
-export const isDemoMode = (): boolean =>
-  process.env.DEMO_MODE === "true" && process.env.NEXT_PHASE !== "phase-production-build"
+export const isDemoMode = (): boolean => process.env.DEMO_MODE === "true"
+// Build-time DB unavailability is already handled by getDemoSession's try/catch.
 
 // Cached demo session — avoids hitting DB on every auth() call in demo mode.
 let _demoSession: Session | null = null
