@@ -1,12 +1,14 @@
 name: Deploy to abada-65
 
-# Connection path: GitHub runner → Cloudflare Access (service-token) → s65.abada.co.kr → blackpc@127.0.0.1:5022
+# Connection path: GitHub runner → bastion (61.245.248.247:5022) → abada-65 (172.16.129.65:5022)
+# The same deploy key authenticates at both hops (registered in both authorized_keys).
 #
 # Required secrets (production environment):
 #   ABADA65_USER          — SSH user on abada-65 (blackpc)
+#   ABADA65_HOST          — abada-65 internal IP (172.16.129.65)
+#   ABADA65_PORT          — SSH port on both hops (5022)
+#   ABADA65_BASTION_HOST  — public bastion (61.245.248.247)
 #   ABADA65_SSH_KEY       — deploy-only ed25519 private key
-#   CF_ACCESS_CLIENT_ID   — Cloudflare Access service token ID
-#   CF_ACCESS_CLIENT_SECRET — Cloudflare Access service token secret
 
 on:
   workflow_run:
@@ -21,37 +23,17 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Install cloudflared
-        run: |
-          curl -sSL -o /tmp/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
-          sudo install -m 0755 /tmp/cloudflared /usr/local/bin/cloudflared
-          cloudflared --version
-
-      - name: Open Cloudflare Access TCP tunnel → localhost:5022
-        env:
-          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-        run: |
-          nohup cloudflared access tcp \
-            --hostname s65.abada.co.kr \
-            --url localhost:5022 \
-            > /tmp/cloudflared.log 2>&1 &
-          # Wait for the local listener to come up
-          for i in {1..15}; do
-            if nc -z localhost 5022; then echo "tunnel up"; exit 0; fi
-            sleep 1
-          done
-          echo "::error::cloudflared failed to listen on localhost:5022"
-          tail -50 /tmp/cloudflared.log
-          exit 1
-
-      - name: SSH deploy via tunnel
+      - name: SSH deploy via bastion
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: localhost
-          port: 5022
+          host: ${{ secrets.ABADA65_HOST }}
+          port: ${{ secrets.ABADA65_PORT }}
           username: ${{ secrets.ABADA65_USER }}
           key: ${{ secrets.ABADA65_SSH_KEY }}
+          proxy_host: ${{ secrets.ABADA65_BASTION_HOST }}
+          proxy_port: ${{ secrets.ABADA65_PORT }}
+          proxy_username: ${{ secrets.ABADA65_USER }}
+          proxy_key: ${{ secrets.ABADA65_SSH_KEY }}
           script: |
             set -euo pipefail
             BASE=/data/abada-kr/aed-abada-kr/aed.abada.kr
@@ -59,11 +41,11 @@ jobs:
             git -c safe.directory='*' pull --ff-only origin main
             cd "$BASE"
             export APP_TAG=${{ github.sha }}
-            # ghcr requires `docker login`; CI publishes the image via GITHUB_TOKEN.
-            # Host login is one-shot (already configured); pull falls back to local build.
+            # ghcr pull (best-effort). Falls back to local build via build: ./src
+            # if the package is private and the host isn't logged in to ghcr.
             docker-compose pull app 2>&1 | tail -5 || true
-            # Run migrations via the migrator profile (separate image with drizzle-kit).
-            # Idempotent: drizzle-kit skips already-applied migrations.
+            # Migrations: separate `migrator` profile image with drizzle-kit.
+            # Idempotent — drizzle-kit skips already-applied migrations.
             docker-compose --profile tools build migrator
             docker-compose --profile tools run --rm migrator
             docker-compose up -d --no-deps app
