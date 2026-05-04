@@ -2,6 +2,11 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { isDemoMode } from "@/lib/auth/auth"
 
+// See /login/page.tsx — same reason: demo-mode redirect must run per-request,
+// not at build time, otherwise Cloudflare serves the cached static HTML.
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 export default function HomePage() {
   if (isDemoMode()) {
     redirect("/dashboard")

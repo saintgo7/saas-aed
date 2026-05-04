@@ -3,6 +3,13 @@ import { redirect } from "next/navigation"
 import { isDemoMode } from "@/lib/auth/auth"
 import { LoginForm } from "./login-form"
 
+// Force dynamic rendering so the demo-mode redirect runs per-request,
+// not at build time. Without this Next.js statically prerenders the page
+// and Cloudflare caches the form HTML for s-maxage=31536000 (1 year),
+// preventing demo-mode users from being routed to /dashboard.
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 export default function LoginPage() {
   if (isDemoMode()) {
     redirect("/dashboard")
