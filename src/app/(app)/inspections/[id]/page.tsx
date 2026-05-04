@@ -6,12 +6,25 @@ import { db, schema } from "@/lib/db"
 import { withTenant } from "@/lib/tenant/with-tenant"
 import { INSPECTION_ITEMS, type InspectionItems } from "@/lib/inspection/items"
 import { getLabels } from "@/lib/documents/i18n"
+import { submitInspection } from "@/server/actions/inspections-submit"
 
 export const dynamic = "force-dynamic"
 
 interface PageProps {
   readonly params: { id: string }
   readonly searchParams: { lang?: "ko" | "en" }
+}
+
+function formatDateTimeKo(d: Date | string | null | undefined): string {
+  if (!d) return "—"
+  const date = typeof d === "string" ? new Date(d) : d
+  if (Number.isNaN(date.getTime())) return "—"
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, "0")
+  const dd = String(date.getDate()).padStart(2, "0")
+  const hh = String(date.getHours()).padStart(2, "0")
+  const mi = String(date.getMinutes()).padStart(2, "0")
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`
 }
 
 function formatDate(d: Date | string | null | undefined, locale: "ko" | "en"): string {
@@ -96,6 +109,35 @@ export default async function InspectionPreviewPage({ params, searchParams }: Pa
           >
             이메일 발송
           </Link>
+          {inspection.submittedAt ? (
+            <span className="inline-flex min-h-touch items-center rounded-lg bg-success-100 px-3 py-2 text-sm font-medium text-success-800">
+              송신 완료 ({formatDateTimeKo(inspection.submittedAt)})
+            </span>
+          ) : (
+            <form
+              action={async () => {
+                "use server"
+                await submitInspection(params.id)
+              }}
+            >
+              <button
+                type="submit"
+                disabled={
+                  !inspection.signatureSha256 ||
+                  !(inspection.pdfUrl || inspection.docxUrl)
+                }
+                className="inline-flex min-h-touch items-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                title={
+                  !inspection.signatureSha256 ||
+                  !(inspection.pdfUrl || inspection.docxUrl)
+                    ? "서명과 리포트 생성을 먼저 완료하세요"
+                    : undefined
+                }
+              >
+                총괄 송신
+              </button>
+            </form>
+          )}
         </div>
       </div>
 

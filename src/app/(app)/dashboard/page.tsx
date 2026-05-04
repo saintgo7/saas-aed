@@ -1,8 +1,8 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
-import { and, eq, gte, lte } from "drizzle-orm"
+import { and, eq, isNotNull } from "drizzle-orm"
 import { auth } from "@/lib/auth/auth"
-import { withTenant } from "@/lib/tenant/with-tenant"
+import { scopeForUser } from "@/lib/tenant/scope-for-user"
 import { db, schema } from "@/lib/db"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -27,13 +27,13 @@ export default async function DashboardPage() {
 
   const tenantId = session.user.tenantId
   const role = session.user.role
-  const scope = withTenant(tenantId)
+  const scope = scopeForUser(session.user)
 
   const yearMonth = currentYearMonth()
   const today = new Date()
   const d30 = addDays(today, 30)
 
-  const [devicesList, monthInspections, padExpiring] = await Promise.all([
+  const [devicesList, monthInspections, departmentRow] = await Promise.all([
     scope.devices().list(),
     db
       .select({
@@ -47,24 +47,72 @@ export default async function DashboardPage() {
           eq(schema.inspections.yearMonth, yearMonth)
         )
       ),
-    db
-      .select()
-      .from(schema.devices)
-      .where(
-        and(
-          eq(schema.devices.tenantId, tenantId),
-          gte(schema.devices.padReplaceAt, today),
-          lte(schema.devices.padReplaceAt, d30)
-        )
-      )
+    session.user.departmentId
+      ? db
+          .select({
+            id: schema.departments.id,
+            code: schema.departments.code,
+            name: schema.departments.name,
+            deviceQuota: schema.departments.deviceQuota
+          })
+          .from(schema.departments)
+          .where(
+            and(
+              eq(schema.departments.tenantId, tenantId),
+              eq(schema.departments.id, session.user.departmentId)
+            )
+          )
+          .limit(1)
+      : Promise.resolve([])
   ])
 
-  const inspectedIds = new Set(monthInspections.map((i) => i.deviceId))
-  const missingDevices = devicesList.filter((d) => !inspectedIds.has(d.id))
-  const completedCount = monthInspections.length
+  const deviceIdsInScope = new Set(devicesList.map((d) => d.id))
+  const inspectedIdsInScope = new Set(
+    monthInspections
+      .filter((i) => deviceIdsInScope.has(i.deviceId))
+      .map((i) => i.deviceId)
+  )
+  const missingDevices = devicesList.filter((d) => !inspectedIdsInScope.has(d.id))
+  const completedCount = inspectedIdsInScope.size
+
+  const padExpiring = devicesList.filter((d) => {
+    const t = new Date(d.padReplaceAt).getTime()
+    return t >= today.getTime() && t <= d30.getTime()
+  })
+
+  const department = departmentRow[0] ?? null
+  // Department banner "N/M": N = inspections submitted (송신) this month for devices in scope.
+  let submittedCount = 0
+  if (department) {
+    const submittedRows = await db
+      .select({ deviceId: schema.inspections.deviceId })
+      .from(schema.inspections)
+      .where(
+        and(
+          eq(schema.inspections.tenantId, tenantId),
+          eq(schema.inspections.yearMonth, yearMonth),
+          isNotNull(schema.inspections.submittedAt)
+        )
+      )
+    submittedCount = submittedRows.filter((r) => deviceIdsInScope.has(r.deviceId)).length
+  }
 
   return (
     <div className="space-y-6">
+      {department ? (
+        <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 dark:border-brand-800 dark:bg-brand-950">
+          <p className="text-xs uppercase tracking-wide text-brand-700 dark:text-brand-300">
+            소속 부서
+          </p>
+          <p className="mt-0.5 text-sm font-semibold text-brand-900 dark:text-brand-100">
+            {department.code} {department.name}
+            <span className="ml-2 text-brand-700 dark:text-brand-300 font-normal">
+              — 이번달 {submittedCount}/{devicesList.length}건 송신
+            </span>
+          </p>
+        </div>
+      ) : null}
+
       <header className="space-y-1">
         <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
           {yearMonth} 점검

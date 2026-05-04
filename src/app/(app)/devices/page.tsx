@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth/auth"
-import { withTenant } from "@/lib/tenant/with-tenant"
+import { scopeForUser } from "@/lib/tenant/scope-for-user"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -12,7 +12,7 @@ export default async function DevicesPage() {
   if (!session?.user) redirect("/login")
 
   const isAdmin = session.user.role === "ADMIN" || session.user.role === "SYSTEM_ADMIN"
-  const devicesList = await withTenant(session.user.tenantId).devices().list()
+  const devicesList = await scopeForUser(session.user).devices().list()
 
   return (
     <div className="space-y-6">
