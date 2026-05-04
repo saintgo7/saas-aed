@@ -73,9 +73,13 @@ async function getDemoSession(): Promise<Session | null> {
       .select()
       .from(schema.users)
       .orderBy(asc(schema.users.createdAt))
-      .limit(20)
-    // Demo prefers INSPECTOR — limits blast radius vs ADMIN (no device CRUD, no user invites).
-    const admin = users.find((u) => u.role === "INSPECTOR") ?? users.find((u) => u.role === "ADMIN") ?? users[0]
+      .limit(50)
+    // Demo selection follows DEMO_ROLE env (SUPER_ADMIN | HQ_ADMIN | DEPT_MANAGER | INSPECTOR).
+    // Default INSPECTOR — minimal blast radius. Set DEMO_ROLE=SUPER_ADMIN to demo /admin pages.
+    const preferred = (process.env.DEMO_ROLE ?? "INSPECTOR").toUpperCase()
+    const fallback: ReadonlyArray<string> = ["SUPER_ADMIN", "HQ_ADMIN", "DEPT_MANAGER", "ADMIN", "INSPECTOR"]
+    const order = [preferred, ...fallback.filter((r) => r !== preferred)]
+    const admin = order.map((r) => users.find((u) => u.role === r)).find(Boolean) ?? users[0]
     if (!admin) return null
     _demoSession = {
       user: {
