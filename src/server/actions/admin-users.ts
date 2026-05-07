@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { and, eq, sql } from "drizzle-orm"
 import { db, schema } from "@/lib/db"
 import { requireRole } from "@/lib/auth/require-role"
+import { logAction } from "@/lib/audit/log-action"
 
 const inviteSchema = z.object({
   tenantId: z.string().uuid(),
@@ -36,7 +37,7 @@ const removeUserSchema = z.object({
  * so the new user can sign in immediately via Magic Link.
  */
 export async function inviteUser(formData: FormData): Promise<void> {
-  await requireRole(["SUPER_ADMIN"])
+  const session = await requireRole(["SUPER_ADMIN"])
 
   const rawDept = formData.get("departmentId")
   const rawPhone = formData.get("phone")
@@ -79,8 +80,9 @@ export async function inviteUser(formData: FormData): Promise<void> {
     }
   }
 
+  let insertedId: string | undefined
   try {
-    await db.insert(schema.users).values({
+    const rows = await db.insert(schema.users).values({
       tenantId: parsed.tenantId,
       departmentId: parsed.departmentId,
       email: parsed.email,
@@ -88,11 +90,21 @@ export async function inviteUser(formData: FormData): Promise<void> {
       role: parsed.role,
       phone: parsed.phone ?? null,
       emailVerifiedAt: new Date()
-    })
+    }).returning({ id: schema.users.id })
+    insertedId = rows[0]?.id
   } catch (error) {
     console.error("[admin-users] inviteUser failed", { error })
     throw new Error("사용자 초대에 실패했습니다. 이메일 중복 여부를 확인해 주세요.")
   }
+
+  await logAction({
+    actorId: session.user.id,
+    tenantId: parsed.tenantId,
+    action: "inviteUser",
+    targetType: "user",
+    targetId: insertedId,
+    payload: { email: parsed.email, name: parsed.name, role: parsed.role }
+  })
 
   revalidatePath("/admin/users")
 }
@@ -114,7 +126,7 @@ export async function updateUserRole(formData: FormData): Promise<void> {
   }
 
   const targetRows = await db
-    .select({ id: schema.users.id })
+    .select({ id: schema.users.id, tenantId: schema.users.tenantId })
     .from(schema.users)
     .where(eq(schema.users.id, parsed.userId))
     .limit(1)
@@ -126,6 +138,15 @@ export async function updateUserRole(formData: FormData): Promise<void> {
     .update(schema.users)
     .set({ role: parsed.role })
     .where(eq(schema.users.id, parsed.userId))
+
+  await logAction({
+    actorId: session.user.id,
+    tenantId: targetRows[0].tenantId,
+    action: "updateUserRole",
+    targetType: "user",
+    targetId: parsed.userId,
+    payload: { role: parsed.role }
+  })
 
   revalidatePath("/admin/users")
 }
@@ -147,7 +168,7 @@ export async function removeUser(formData: FormData): Promise<void> {
   }
 
   const targetRows = await db
-    .select({ id: schema.users.id })
+    .select({ id: schema.users.id, tenantId: schema.users.tenantId })
     .from(schema.users)
     .where(eq(schema.users.id, parsed.userId))
     .limit(1)
@@ -172,6 +193,14 @@ export async function removeUser(formData: FormData): Promise<void> {
     console.error("[admin-users] removeUser failed", { error })
     throw new Error("사용자 제거에 실패했습니다.")
   }
+
+  await logAction({
+    actorId: session.user.id,
+    tenantId: targetRows[0].tenantId,
+    action: "removeUser",
+    targetType: "user",
+    targetId: parsed.userId
+  })
 
   revalidatePath("/admin/users")
 }

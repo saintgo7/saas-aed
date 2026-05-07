@@ -32,6 +32,7 @@ function planTone(plan: string): "slate" | "amber" | "green" | "brand" {
 }
 
 function statusFor(row: TenantRow): { tone: "red" | "green" | "amber"; label: string } {
+  if (row.name.startsWith("[비활성] ")) return { tone: "red", label: "비활성" }
   if (row.deptCount === 0) return { tone: "red", label: "비어있음" }
   if (row.deptCount > 0 && row.userCount > 0) return { tone: "green", label: "운영중" }
   return { tone: "amber", label: "준비중" }

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { and, eq, sql } from "drizzle-orm"
 import { db, schema } from "@/lib/db"
 import { requireRole } from "@/lib/auth/require-role"
+import { logAction } from "@/lib/audit/log-action"
 
 const updateManagerSchema = z.object({
   departmentId: z.string().uuid(),
@@ -72,6 +73,15 @@ export async function updateDepartmentManager(formData: FormData): Promise<void>
     console.error("[admin-departments] update manager failed", { error })
     throw new Error("부서 관리자 변경에 실패했습니다.")
   }
+
+  await logAction({
+    actorId: session.user.id,
+    tenantId: dept.tenantId,
+    action: "updateDepartmentManager",
+    targetType: "department",
+    targetId: parsed.departmentId,
+    payload: { managerUserId: parsed.managerUserId }
+  })
 
   revalidatePath("/admin/departments")
 }
@@ -144,19 +154,30 @@ export async function createDepartment(formData: FormData): Promise<void> {
   const currentMax = maxRows[0]?.max ?? 0
   const nextSortOrder = currentMax + 1
 
+  let insertedDeptId: string | undefined
   try {
-    await db.insert(schema.departments).values({
+    const rows = await db.insert(schema.departments).values({
       tenantId: parsed.tenantId,
       code: parsed.code,
       name: parsed.name,
       deviceQuota: parsed.deviceQuota,
       isHq: parsed.isHq,
       sortOrder: nextSortOrder
-    })
+    }).returning({ id: schema.departments.id })
+    insertedDeptId = rows[0]?.id
   } catch (error) {
     console.error("[admin-departments] create failed", { error })
     throw new Error("부서 생성에 실패했습니다.")
   }
+
+  await logAction({
+    actorId: session.user.id,
+    tenantId: parsed.tenantId,
+    action: "createDepartment",
+    targetType: "department",
+    targetId: insertedDeptId,
+    payload: { code: parsed.code, name: parsed.name, deviceQuota: parsed.deviceQuota }
+  })
 
   revalidatePath("/admin/departments")
 }
@@ -222,6 +243,15 @@ export async function deleteDepartment(formData: FormData): Promise<void> {
     console.error("[admin-departments] delete failed", { error })
     throw new Error("부서 삭제에 실패했습니다.")
   }
+
+  await logAction({
+    actorId: session.user.id,
+    tenantId: dept.tenantId,
+    action: "deleteDepartment",
+    targetType: "department",
+    targetId: parsed.departmentId,
+    payload: { code: dept.code, name: dept.name }
+  })
 
   revalidatePath("/admin/departments")
 }

@@ -198,6 +198,12 @@ export default async function AdminIndexPage() {
       title: "사용자 관리",
       desc: "사용자 초대, 역할 부여, 부서 배치",
       Icon: Users
+    },
+    {
+      href: "/admin/devices",
+      title: "장비 관리",
+      desc: "전체 AED 장비 목록, 검색, 등록 및 삭제",
+      Icon: HeartPulse
     }
   ]
 
@@ -241,7 +247,7 @@ export default async function AdminIndexPage() {
       </section>
 
       {/* Quick actions */}
-      <section aria-label="빠른 이동" className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <section aria-label="빠른 이동" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {quickActions.map((a) => {
           const Icon = a.Icon
           return (

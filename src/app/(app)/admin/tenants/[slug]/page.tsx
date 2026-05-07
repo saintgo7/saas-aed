@@ -3,10 +3,12 @@ import { notFound } from "next/navigation"
 import { eq, sql, desc } from "drizzle-orm"
 import { db, schema } from "@/lib/db"
 import { requireRole } from "@/lib/auth/require-role"
-import { disableTenant, updateTenantContact } from "@/server/actions/admin-tenants"
+import { disableTenant, enableTenant, updateTenantContact } from "@/server/actions/admin-tenants"
+import { deleteDevice } from "@/server/actions/admin-devices"
 import { DataTable, THead, TR, TH, TD, EmptyRow } from "@/components/admin/data-table"
 import { StatBadge } from "@/components/admin/search-input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { CreateDeviceForm } from "./_components/create-device-form"
 
 interface DetailPageProps {
   params: { slug: string }
@@ -36,6 +38,19 @@ interface UserRow {
   createdAt: Date
 }
 
+interface DeviceRow {
+  id: string
+  code: string | null
+  departmentCode: string | null
+  departmentName: string | null
+  location: string
+  manufacturer: string
+  model: string
+  serial: string
+  expiresAt: Date
+  inspCount: number
+}
+
 function planTone(plan: string): "slate" | "amber" | "green" | "brand" {
   if (plan === "ENTERPRISE") return "brand"
   if (plan === "STANDARD") return "green"
@@ -60,6 +75,14 @@ function roleTone(role: string): "slate" | "amber" | "green" | "red" | "brand" {
 
 function formatDate(d: Date): string {
   return new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }).format(d)
+}
+
+function expiryTone(d: Date): "slate" | "amber" | "red" {
+  const diff = d.getTime() - Date.now()
+  const days = diff / 86400000
+  if (days < 0) return "red"
+  if (days < 90) return "amber"
+  return "slate"
 }
 
 /**
@@ -158,6 +181,38 @@ export default async function TenantDetailPage({ params }: DetailPageProps) {
     .limit(100)
   const userRows: ReadonlyArray<UserRow> = userRowsRaw
 
+  // Device list for this tenant (capped at 200; full mgmt lives in /admin/devices)
+  const deviceRowsRaw = await db
+    .select({
+      id: schema.devices.id,
+      code: schema.devices.code,
+      departmentCode: schema.departments.code,
+      departmentName: schema.departments.name,
+      location: schema.devices.location,
+      manufacturer: schema.devices.manufacturer,
+      model: schema.devices.model,
+      serial: schema.devices.serial,
+      expiresAt: schema.devices.expiresAt,
+      inspCount: sql<number>`(
+        select count(*)::int
+        from ${schema.inspections}
+        where ${schema.inspections.deviceId} = ${schema.devices.id}
+      )`
+    })
+    .from(schema.devices)
+    .leftJoin(schema.departments, eq(schema.departments.id, schema.devices.departmentId))
+    .where(eq(schema.devices.tenantId, tenant.id))
+    .orderBy(schema.devices.code, schema.devices.serial)
+    .limit(200)
+  const deviceRows: ReadonlyArray<DeviceRow> = deviceRowsRaw
+
+  // Department options for create-device form
+  const deptOptions = departments.map((d) => ({
+    id: d.id,
+    code: d.code,
+    name: d.name
+  }))
+
   return (
     <div className="space-y-6">
       <div>
@@ -180,15 +235,38 @@ export default async function TenantDetailPage({ params }: DetailPageProps) {
           <p className="text-xs text-slate-400 mt-1">생성일: {formatDate(tenant.createdAt)}</p>
         </div>
         {isSuperAdmin ? (
-          <form action={disableTenant}>
-            <input type="hidden" name="tenantId" value={tenant.id} />
-            <button
-              type="submit"
-              className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 text-sm font-medium hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-900/30"
-            >
-              이 학교 비활성화
-            </button>
-          </form>
+          <div className="flex gap-2">
+            {tenant.name.startsWith("[비활성] ") ? (
+              <form action={enableTenant}>
+                <input type="hidden" name="tenantId" value={tenant.id} />
+                <select
+                  name="plan"
+                  defaultValue="STANDARD"
+                  className="border rounded px-2 py-1 text-sm font-mono mr-2"
+                >
+                  <option value="FREE">FREE</option>
+                  <option value="STANDARD">STANDARD</option>
+                  <option value="ENTERPRISE">ENTERPRISE</option>
+                </select>
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 text-sm font-medium hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
+                >
+                  재활성화
+                </button>
+              </form>
+            ) : (
+              <form action={disableTenant}>
+                <input type="hidden" name="tenantId" value={tenant.id} />
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 text-sm font-medium hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-900/30"
+                >
+                  이 학교 비활성화
+                </button>
+              </form>
+            )}
+          </div>
         ) : null}
       </header>
 
@@ -289,6 +367,79 @@ export default async function TenantDetailPage({ params }: DetailPageProps) {
           </tbody>
         </DataTable>
       </section>
+
+      <section className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">
+            장비 목록{" "}
+            <span className="text-xs text-slate-500">(최대 200대 · 전체: </span>
+            <Link href="/admin/devices" className="text-xs text-brand-600 hover:underline">
+              /admin/devices
+            </Link>
+            <span className="text-xs text-slate-500">)</span>
+          </h2>
+        </div>
+        <DataTable>
+          <THead>
+            <TR>
+              <TH>장비코드</TH>
+              <TH>부서</TH>
+              <TH>위치</TH>
+              <TH>모델명</TH>
+              <TH>시리얼</TH>
+              <TH>유효기한</TH>
+              <TH className="text-right">점검수</TH>
+              {isSuperAdmin ? <TH className="text-right">작업</TH> : null}
+            </TR>
+          </THead>
+          <tbody>
+            {deviceRows.map((d) => (
+              <TR key={d.id}>
+                <TD className="font-mono text-xs">{d.code ?? "—"}</TD>
+                <TD className="text-xs">
+                  {d.departmentCode ? (
+                    <span className="font-mono">{d.departmentCode}</span>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
+                  {d.departmentName ? (
+                    <div className="text-slate-500">{d.departmentName}</div>
+                  ) : null}
+                </TD>
+                <TD className="text-sm">{d.location}</TD>
+                <TD className="text-sm">{d.model}</TD>
+                <TD className="font-mono text-xs">{d.serial}</TD>
+                <TD className="text-xs">
+                  <StatBadge tone={expiryTone(d.expiresAt)}>
+                    {formatDate(d.expiresAt)}
+                  </StatBadge>
+                </TD>
+                <TD className="text-right tabular-nums text-sm">{d.inspCount}</TD>
+                {isSuperAdmin ? (
+                  <TD className="text-right">
+                    <form action={deleteDevice} className="inline">
+                      <input type="hidden" name="deviceId" value={d.id} />
+                      <button
+                        type="submit"
+                        className="rounded border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs px-2 py-1 hover:bg-rose-100 dark:hover:bg-rose-950/60"
+                      >
+                        삭제
+                      </button>
+                    </form>
+                  </TD>
+                ) : null}
+              </TR>
+            ))}
+            {deviceRows.length === 0 ? (
+              <EmptyRow colSpan={isSuperAdmin ? 8 : 7} message="등록된 장비가 없습니다." />
+            ) : null}
+          </tbody>
+        </DataTable>
+      </section>
+
+      {isSuperAdmin ? (
+        <CreateDeviceForm tenantId={tenant.id} departments={deptOptions} />
+      ) : null}
 
       {isSuperAdmin ? (
         <Card>
