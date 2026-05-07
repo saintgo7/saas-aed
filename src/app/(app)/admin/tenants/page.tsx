@@ -68,18 +68,18 @@ export default async function AdminTenantsPage({ searchParams }: AdminTenantsPag
       plan: schema.organizations.plan,
       deptCount: sql<number>`(
         select count(*)::int
-        from ${schema.departments}
-        where ${schema.departments.tenantId} = ${schema.organizations.id}
+        from departments
+        where departments.tenant_id = organizations.id
       )`,
       userCount: sql<number>`(
         select count(*)::int
-        from ${schema.users}
-        where ${schema.users.tenantId} = ${schema.organizations.id}
+        from users
+        where users.tenant_id = organizations.id
       )`,
       deviceCount: sql<number>`(
         select count(*)::int
-        from ${schema.devices}
-        where ${schema.devices.tenantId} = ${schema.organizations.id}
+        from devices
+        where devices.tenant_id = organizations.id
       )`
     })
     .from(schema.organizations)
