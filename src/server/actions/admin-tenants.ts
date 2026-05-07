@@ -6,6 +6,18 @@ import { eq } from "drizzle-orm"
 import { db, schema } from "@/lib/db"
 import { requireRole } from "@/lib/auth/require-role"
 
+const tenantIdSchema = z.string().uuid("올바른 학교 ID가 아닙니다.")
+
+const updateContactSchema = z.object({
+  tenantId: tenantIdSchema,
+  name: z.string().trim().min(1, "학교명을 입력해 주세요.").max(120),
+  contactEmail: z.string().trim().email("올바른 이메일 형식이 아닙니다.")
+})
+
+const disableSchema = z.object({
+  tenantId: tenantIdSchema
+})
+
 const createTenantSchema = z.object({
   slug: z
     .string()
@@ -86,4 +98,81 @@ export async function createTenant(formData: FormData): Promise<void> {
 
   revalidatePath("/admin/tenants")
   revalidatePath("/admin/users")
+}
+
+/**
+ * Server Action — soft-disable a school. SUPER_ADMIN only.
+ * Hard-delete is too risky (cascade-deletes departments/users/devices/inspections).
+ * Instead we:
+ *   - downgrade plan to FREE
+ *   - prepend "[비활성] " to the tenant name (idempotent)
+ * The school stays in the DB, audit trails intact, and can be re-enabled by editing the name.
+ */
+export async function disableTenant(formData: FormData): Promise<void> {
+  await requireRole(["SUPER_ADMIN"])
+
+  const parsed = disableSchema.parse({
+    tenantId: formData.get("tenantId")
+  })
+
+  const existing = await db
+    .select({ id: schema.organizations.id, name: schema.organizations.name })
+    .from(schema.organizations)
+    .where(eq(schema.organizations.id, parsed.tenantId))
+    .limit(1)
+
+  const current = existing[0]
+  if (!current) {
+    throw new Error("학교를 찾을 수 없습니다.")
+  }
+
+  const DISABLED_PREFIX = "[비활성] "
+  const nextName = current.name.startsWith(DISABLED_PREFIX) ? current.name : `${DISABLED_PREFIX}${current.name}`
+
+  await db
+    .update(schema.organizations)
+    .set({
+      plan: "FREE",
+      name: nextName,
+      updatedAt: new Date()
+    })
+    .where(eq(schema.organizations.id, parsed.tenantId))
+
+  revalidatePath("/admin/tenants")
+  revalidatePath(`/admin/tenants/${parsed.tenantId}`)
+}
+
+/**
+ * Server Action — update tenant basic info (name + contact email). SUPER_ADMIN only.
+ * Slug is intentionally immutable here (it's part of URLs and would break links).
+ */
+export async function updateTenantContact(formData: FormData): Promise<void> {
+  await requireRole(["SUPER_ADMIN"])
+
+  const parsed = updateContactSchema.parse({
+    tenantId: formData.get("tenantId"),
+    name: formData.get("name"),
+    contactEmail: formData.get("contactEmail")
+  })
+
+  const existing = await db
+    .select({ id: schema.organizations.id })
+    .from(schema.organizations)
+    .where(eq(schema.organizations.id, parsed.tenantId))
+    .limit(1)
+  if (!existing[0]) {
+    throw new Error("학교를 찾을 수 없습니다.")
+  }
+
+  await db
+    .update(schema.organizations)
+    .set({
+      name: parsed.name,
+      contactEmail: parsed.contactEmail,
+      updatedAt: new Date()
+    })
+    .where(eq(schema.organizations.id, parsed.tenantId))
+
+  revalidatePath("/admin/tenants")
+  revalidatePath(`/admin/tenants/${parsed.tenantId}`)
 }
