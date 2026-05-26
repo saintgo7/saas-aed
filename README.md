@@ -185,3 +185,10 @@ pnpm book:build
 
 - Code: MIT
 - Book content: CC BY-NC-SA 4.0
+
+## 라이브 서비스 (Live Service)
+
+| 환경 | URL |
+|------|-----|
+| Production | https://aed.abada.kr |
+
