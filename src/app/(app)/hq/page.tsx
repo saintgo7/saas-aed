@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
-import Link from "next/link"
+import { Link } from "@/i18n/navigation"
 import { auth } from "@/lib/auth/auth"
 import { db, schema } from "@/lib/db"
 import { and, eq, sql } from "drizzle-orm"
