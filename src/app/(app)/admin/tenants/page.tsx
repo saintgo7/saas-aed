@@ -1,4 +1,4 @@
-import Link from "next/link"
+import { Link } from "@/i18n/navigation"
 import { sql, ilike, or } from "drizzle-orm"
 import { db, schema } from "@/lib/db"
 import { requireRole } from "@/lib/auth/require-role"

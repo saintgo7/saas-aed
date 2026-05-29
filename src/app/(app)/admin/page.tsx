@@ -1,4 +1,4 @@
-import Link from "next/link"
+import { Link } from "@/i18n/navigation"
 import { sql, desc, eq } from "drizzle-orm"
 import { School, Building2, Users, HeartPulse, Activity, Inbox, ChevronRight, Clock } from "lucide-react"
 import { db, schema } from "@/lib/db"

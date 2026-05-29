@@ -1,4 +1,4 @@
-import Link from "next/link"
+import { Link } from "@/i18n/navigation"
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth/auth"
 import { scopeForUser } from "@/lib/tenant/scope-for-user"

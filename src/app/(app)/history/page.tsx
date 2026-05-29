@@ -1,4 +1,4 @@
-import Link from "next/link"
+import { Link } from "@/i18n/navigation"
 import { redirect } from "next/navigation"
 import { and, eq, like } from "drizzle-orm"
 import { auth } from "@/lib/auth/auth"
