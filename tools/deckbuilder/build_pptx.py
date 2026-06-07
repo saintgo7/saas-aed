@@ -274,10 +274,218 @@ def slide_closing(prs, s, course, idx):
         _text(sl, Inches(0.92), Inches(4.3), Inches(11.5), Inches(2.2), lines, space_after=5)
 
 
+# =====================================================================
+#  그림(다이어그램) 레이아웃 — 이미지가 아닌 편집 가능한 네이티브 도형
+# =====================================================================
+DIA_FILLS = [RGBColor(0x21, 0x3B, 0x66), RGBColor(0x2E, 0x75, 0xB6),
+             RGBColor(0x57, 0x9A, 0xD6), RGBColor(0x9D, 0xC3, 0xE6)]
+
+
+def _box(slide, x, y, w, h, title=None, desc=None, fill=LIGHT, edge=None,
+         tcolor=NAVY, dcolor=GRAY, tsize=14, dsize=11, accent=None,
+         align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE, radius=True):
+    shape = MSO_SHAPE.ROUNDED_RECTANGLE if radius else MSO_SHAPE.RECTANGLE
+    sp = _rect(slide, x, y, w, h, fill=fill, line=edge, shape=shape)
+    if accent:
+        _rect(slide, x, y, w, Pt(6), fill=accent)
+    tf = sp.text_frame
+    tf.word_wrap = True
+    tf.vertical_anchor = anchor
+    tf.margin_left = Inches(0.1); tf.margin_right = Inches(0.1)
+    tf.margin_top = Inches(0.05); tf.margin_bottom = Inches(0.05)
+    p = tf.paragraphs[0]; p.alignment = align
+    if title:
+        r = p.add_run(); r.text = title
+        _set_font(r, size=tsize, bold=True, color=tcolor)
+    if desc:
+        p2 = tf.add_paragraph(); p2.alignment = align; p2.space_before = Pt(2)
+        p2.line_spacing = 1.02
+        r2 = p2.add_run(); r2.text = desc
+        _set_font(r2, size=dsize, color=dcolor)
+    return sp
+
+
+def _arrow(slide, x, y, w, h, d="r", color=ACCENT2):
+    shp = {"r": MSO_SHAPE.RIGHT_ARROW, "l": MSO_SHAPE.LEFT_ARROW,
+           "u": MSO_SHAPE.UP_ARROW, "d": MSO_SHAPE.DOWN_ARROW}[d]
+    return _rect(slide, x, y, w, h, fill=color, shape=shp)
+
+
+def _badge(slide, x, y, d, text, fill=ACCENT2, tcolor=WHITE, size=18):
+    sp = _rect(slide, x, y, d, d, fill=fill, shape=MSO_SHAPE.OVAL)
+    tf = sp.text_frame; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    tf.margin_left = 0; tf.margin_right = 0; tf.margin_top = 0; tf.margin_bottom = 0
+    p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER
+    r = p.add_run(); r.text = text
+    _set_font(r, size=size, bold=True, color=tcolor)
+    return sp
+
+
+def slide_flow(prs, s, course, idx):
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    _content_header(sl, s.get("title", ""), s.get("kicker"))
+    steps = s.get("steps", [])
+    n = max(1, len(steps))
+    vertical = s.get("dir") == "v" or n > 5
+    if not vertical:
+        aw = Inches(0.55)
+        x0 = Inches(0.62)
+        total = Inches(12.1)
+        bw = int((total - (n - 1) * aw) / n)
+        by = Inches(3.0); bh = Inches(2.0)
+        for i, st in enumerate(steps):
+            bx = x0 + i * (bw + aw)
+            _box(sl, bx, by, bw, bh, st.get("t"), st.get("d"),
+                 fill=LIGHT, accent=DIA_FILLS[i % len(DIA_FILLS)],
+                 tcolor=NAVY, tsize=15, dsize=11)
+            if i < n - 1:
+                _arrow(sl, bx + bw + Inches(0.05), by + int(bh / 2) - Inches(0.22),
+                       Inches(0.45), Inches(0.44), "r")
+    else:
+        x0 = Inches(3.0); bw = Inches(7.3)
+        ah = Inches(0.4)
+        top = Inches(1.95)
+        bh = int((Inches(4.95) - (n - 1) * ah) / n)
+        bh = min(bh, Inches(1.1))
+        for i, st in enumerate(steps):
+            by = top + i * (bh + ah)
+            _box(sl, x0, by, bw, bh, st.get("t"), st.get("d"),
+                 fill=LIGHT, accent=DIA_FILLS[i % len(DIA_FILLS)],
+                 align=PP_ALIGN.LEFT, tsize=14, dsize=11)
+            if i < n - 1:
+                _arrow(sl, x0 + int(bw / 2) - Inches(0.2), by + bh + Inches(0.02),
+                       Inches(0.4), Inches(0.36), "d")
+    _footer(sl, idx, course)
+
+
+def slide_loop(prs, s, course, idx):
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    _content_header(sl, s.get("title", ""), s.get("kicker"))
+    nodes = s.get("nodes", [])[:4]
+    bw = Inches(3.7); bh = Inches(1.35)
+    L, R = Inches(0.9), Inches(8.72)
+    T, B = Inches(2.35), Inches(5.1)
+    pos = [(L, T), (R, T), (R, B), (L, B)]
+    for i, nd in enumerate(nodes):
+        _box(sl, pos[i][0], pos[i][1], bw, bh, nd.get("t"), nd.get("d"),
+             fill=DIA_FILLS[i % len(DIA_FILLS)], tcolor=WHITE, dcolor=RGBColor(0xE5, 0xEE, 0xF8),
+             tsize=15, dsize=11)
+    cx, cy = Inches(5.9), Inches(3.55)
+    _badge(sl, cx, cy, Inches(1.5), s.get("center", "반복"),
+           fill=ACCENT2, size=15)
+    midy = T + int(bh / 2) - Inches(0.2)
+    _arrow(sl, L + bw + Inches(0.2), midy, Inches(1.0), Inches(0.42), "r")
+    _arrow(sl, R + int(bw / 2) - Inches(0.2), T + bh + Inches(0.12), Inches(0.42), Inches(0.95), "d")
+    _arrow(sl, L + bw + Inches(0.2), B + int(bh / 2) - Inches(0.2), Inches(1.0), Inches(0.42), "l")
+    _arrow(sl, L + int(bw / 2) - Inches(0.2), T + bh + Inches(0.12), Inches(0.42), Inches(0.95), "u")
+    _footer(sl, idx, course)
+
+
+def slide_layers(prs, s, course, idx):
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    _content_header(sl, s.get("title", ""), s.get("kicker"))
+    items = s.get("items", [])[:4]
+    n = len(items)
+    ox, oy = Inches(2.1), Inches(2.15)
+    ow, oh = Inches(9.1), Inches(4.55)
+    dx, dy = Inches(0.95), Inches(0.62)
+    for i, it in enumerate(items):
+        x = ox + i * dx; y = oy + i * dy
+        w = ow - 2 * i * dx; h = oh - 2 * i * dy
+        _rect(sl, x, y, w, h, fill=DIA_FILLS[i % len(DIA_FILLS)],
+              shape=MSO_SHAPE.ROUNDED_RECTANGLE)
+        tb = _text(sl, x + Inches(0.15), y + Inches(0.08), w - Inches(0.3), Inches(0.45),
+                   [[(it.get("t", ""), dict(size=15 - i, bold=True,
+                      color=(WHITE if i < 2 else NAVY)))]], align=PP_ALIGN.CENTER,
+                   anchor=MSO_ANCHOR.TOP)
+    # 우측 설명 캡션
+    cap = [[(f"{it.get('t','')} — {it.get('d','')}",
+             dict(size=11, color=GRAY))] for it in items]
+    if any(it.get("d") for it in items):
+        _text(sl, Inches(0.62), Inches(6.55), Inches(12.1), Inches(0.4),
+              [[("바깥에서 안으로: " + "  ›  ".join(it.get("t", "") for it in items),
+                 dict(size=11, color=LGRAY, italic=True))]])
+    _footer(sl, idx, course)
+
+
+def slide_blocks(prs, s, course, idx):
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    _content_header(sl, s.get("title", ""), s.get("kicker"))
+    items = s.get("items", [])
+    cols = s.get("cols", 2 if len(items) <= 4 else 3)
+    rows = (len(items) + cols - 1) // cols
+    gx, gy = Inches(0.35), Inches(0.35)
+    x0, y0 = Inches(0.62), Inches(2.0)
+    aw, ah = Inches(12.1), Inches(4.7)
+    cw = int((aw - (cols - 1) * gx) / cols)
+    ch = int((ah - (rows - 1) * gy) / rows)
+    for i, it in enumerate(items):
+        r, c = divmod(i, cols)
+        x = x0 + c * (cw + gx); y = y0 + r * (ch + gy)
+        _box(sl, x, y, cw, ch, None, None, fill=LIGHT,
+             accent=DIA_FILLS[i % len(DIA_FILLS)], radius=True)
+        bx = x + Inches(0.2); by = y + Inches(0.22)
+        if it.get("n"):
+            _badge(sl, bx, by, Inches(0.5), str(it["n"]),
+                   fill=DIA_FILLS[i % len(DIA_FILLS)], size=15)
+            tx = bx + Inches(0.68)
+        else:
+            tx = bx
+        _text(sl, tx, by + Inches(0.02), x + cw - tx - Inches(0.15), Inches(0.5),
+              [[(it.get("t", ""), dict(size=15, bold=True, color=NAVY))]])
+        if it.get("d"):
+            _text(sl, bx, by + Inches(0.62), cw - Inches(0.4), ch - Inches(0.9),
+                  [[(it["d"], dict(size=12, color=GRAY))]], line_spacing=1.05)
+    _footer(sl, idx, course)
+
+
+def slide_steps(prs, s, course, idx):
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    _content_header(sl, s.get("title", ""), s.get("kicker"))
+    steps = s.get("steps", [])
+    n = max(1, len(steps))
+    top = Inches(2.0)
+    rh = min(Inches(0.92), int((Inches(4.9)) / n))
+    gap = Inches(0.12)
+    for i, st in enumerate(steps):
+        y = top + i * (rh + gap)
+        _badge(sl, Inches(0.7), y + int(rh / 2) - Inches(0.3), Inches(0.6),
+               str(i + 1), fill=DIA_FILLS[i % len(DIA_FILLS)], size=18)
+        _rect(sl, Inches(1.5), y, Inches(11.2), rh, fill=LIGHT,
+              shape=MSO_SHAPE.ROUNDED_RECTANGLE)
+        _text(sl, Inches(1.75), y + Inches(0.08), Inches(10.7), rh - Inches(0.12),
+              [[(st.get("t", ""), dict(size=14, bold=True, color=NAVY)),
+                ("   " + st.get("d", ""), dict(size=12, color=GRAY))]],
+              anchor=MSO_ANCHOR.MIDDLE)
+    _footer(sl, idx, course)
+
+
+def slide_compare(prs, s, course, idx):
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    _content_header(sl, s.get("title", ""), s.get("kicker"))
+    panels = [("left", Inches(0.62), DIA_FILLS[0]), ("right", Inches(6.95), DIA_FILLS[1])]
+    for key, x, col in panels:
+        c = s.get(key, {})
+        _rect(sl, x, Inches(2.0), Inches(5.76), Inches(0.62), fill=col,
+              shape=MSO_SHAPE.ROUNDED_RECTANGLE)
+        _text(sl, x + Inches(0.2), Inches(2.02), Inches(5.4), Inches(0.58),
+              [[(c.get("title", ""), dict(size=16, bold=True, color=WHITE))]],
+              anchor=MSO_ANCHOR.MIDDLE)
+        _rect(sl, x, Inches(2.72), Inches(5.76), Inches(3.95), fill=LIGHT,
+              shape=MSO_SHAPE.ROUNDED_RECTANGLE)
+        _bullets_tf(sl, x + Inches(0.25), Inches(2.95), Inches(5.3), Inches(3.5),
+                    c.get("bullets", []), base=14)
+    _badge(sl, Inches(6.16), Inches(3.95), Inches(1.0), s.get("vs", "VS"),
+           fill=ACCENT2, size=18)
+    _footer(sl, idx, course)
+
+
 LAYOUTS = {
     "title": slide_title, "section": slide_section, "bullets": slide_bullets,
     "two_col": slide_two_col, "table": slide_table, "takeaway": slide_takeaway,
     "quote": slide_quote, "closing": slide_closing,
+    "flow": slide_flow, "loop": slide_loop, "layers": slide_layers,
+    "blocks": slide_blocks, "steps": slide_steps, "compare": slide_compare,
 }
 
 
