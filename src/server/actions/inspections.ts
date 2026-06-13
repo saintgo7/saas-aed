@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { and, eq } from "drizzle-orm"
 import { auth } from "@/lib/auth/auth"
 import { withTenant } from "@/lib/tenant/with-tenant"
+import { tenantAdminRoleFilter } from "@/lib/auth/admin-roles"
 import { db, schema } from "@/lib/db"
 import { inspectionItemsSchema } from "@/lib/inspection/items"
 import { uploadSignature } from "@/lib/signature/upload"
@@ -264,7 +265,7 @@ export async function sendInspection(id: string): Promise<{ ok: true }> {
       .where(
         and(
           eq(schema.users.tenantId, session.user.tenantId),
-          eq(schema.users.role, "ADMIN")
+          tenantAdminRoleFilter()
         )
       )
     const recipients = Array.from(

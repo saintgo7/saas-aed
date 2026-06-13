@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm"
 import { db, schema } from "@/lib/db"
+import { isTenantAdminRole } from "@/lib/auth/admin-roles"
 import { email } from "@/lib/email"
 import MonthlyReminderEmail from "@/lib/email/templates/monthly-reminder"
 
@@ -33,7 +34,7 @@ export async function sendMonthlyReminders(): Promise<MonthlyReminderResult> {
         .where(eq(schema.users.tenantId, org.id))
 
       const targets = inspectors.filter(
-        (u) => u.role === "INSPECTOR" || u.role === "ADMIN"
+        (u) => u.role === "INSPECTOR" || isTenantAdminRole(u.role)
       )
 
       for (const user of targets) {
