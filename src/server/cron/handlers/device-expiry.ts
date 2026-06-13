@@ -1,5 +1,6 @@
 import { and, eq, gte, lte } from "drizzle-orm"
 import { db, schema } from "@/lib/db"
+import { tenantAdminRoleFilter } from "@/lib/auth/admin-roles"
 import { email } from "@/lib/email"
 import PadExpiryEmail from "@/lib/email/templates/pad-expiry"
 
@@ -56,7 +57,7 @@ export async function deviceExpirySweep(): Promise<DeviceExpiryResult> {
         .where(
           and(
             eq(schema.users.tenantId, device.tenantId),
-            eq(schema.users.role, "ADMIN")
+            tenantAdminRoleFilter()
           )
         )
 

@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm"
 import { db, schema } from "@/lib/db"
+import { isTenantAdminRole } from "@/lib/auth/admin-roles"
 import { email } from "@/lib/email"
 import MissedInspectionEmail from "@/lib/email/templates/missed-inspection"
 
@@ -56,7 +57,7 @@ export async function checkMissedInspections(): Promise<MissedInspectionResult> 
         .where(eq(schema.users.tenantId, org.id))
 
       const recipients = users.filter(
-        (u) => u.role === "ADMIN" || u.role === "INSPECTOR"
+        (u) => isTenantAdminRole(u.role) || u.role === "INSPECTOR"
       )
 
       const subject = `[AED 미점검] ${yearMonth} ${missing.length}대 미완료`
