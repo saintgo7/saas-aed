@@ -3,12 +3,25 @@
 
 import { mkdir, writeFile, readFile, unlink } from "node:fs/promises"
 import { existsSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { dirname, join, resolve, sep } from "node:path"
 import { Buffer } from "node:buffer"
 import { createHash } from "node:crypto"
 import type { StorageAdapter } from "./index"
 
 const ROOT = "/tmp/aed-storage"
+
+/**
+ * Resolve a storage key to an absolute path, refusing any key that escapes
+ * ROOT (e.g. `../../etc/passwd`). The read path is reachable unauthenticated
+ * via /api/local-storage/[...key], so traversal must be blocked here.
+ * Returns null when the key would resolve outside ROOT.
+ */
+export function resolveWithinRoot(key: string): string | null {
+  const target = resolve(ROOT, key)
+  const rootPrefix = resolve(ROOT) + sep
+  if (target !== resolve(ROOT) && !target.startsWith(rootPrefix)) return null
+  return target
+}
 
 async function toBuffer(body: Buffer | Blob): Promise<Buffer> {
   if (Buffer.isBuffer(body)) return body
@@ -46,7 +59,8 @@ export const localAdapter: StorageAdapter = {
 }
 
 export async function readLocalObject(key: string): Promise<{ buffer: Buffer; contentType?: string } | null> {
-  const target = join(ROOT, key)
+  const target = resolveWithinRoot(key)
+  if (!target) return null
   if (!existsSync(target)) return null
   const buffer = await readFile(target)
   let contentType: string | undefined
