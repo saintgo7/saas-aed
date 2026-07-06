@@ -60,7 +60,9 @@ const nextAuth = NextAuth({
 
 export const { handlers, signIn, signOut } = nextAuth
 
-export const isDemoMode = (): boolean => process.env.DEMO_MODE === "true"
+// DEMO_MODE은 프로덕션에서 절대 세션을 위조하지 못하도록 NODE_ENV로 하드 가드한다.
+export const isDemoMode = (): boolean =>
+  process.env.NODE_ENV !== "production" && process.env.DEMO_MODE === "true"
 // Build-time DB unavailability is already handled by getDemoSession's try/catch.
 
 // Cached demo session — avoids hitting DB on every auth() call in demo mode.
@@ -102,6 +104,11 @@ async function getDemoSession(): Promise<Session | null> {
 /**
  * Wrapped auth() — short-circuits to a seeded admin when DEMO_MODE=true.
  * Production usage requires DEMO_MODE unset or "false".
+ *
+ * SECURITY-TODO(P1): implement real Auth.js [...nextauth] route. `handlers`
+ * from NextAuth() is exported but never mounted, so demo mode is currently the
+ * only working login path. In production isDemoMode() is force-disabled, so
+ * nextAuth.auth() below returns null until that real route is wired.
  */
 export const auth = async (): Promise<Session | null> => {
   if (isDemoMode()) {
