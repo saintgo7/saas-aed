@@ -56,3 +56,4 @@ docs/book/*.docx
 # Misc
 .cache/
 .turbo/
+graphify-out/
