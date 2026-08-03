@@ -17,8 +17,21 @@ declare module "next-auth" {
   }
 }
 
+// AUTH_SECRET(v5) 우선, NEXTAUTH_SECRET(v4 호환) 폴백. 프로덕션 런타임에서 필수.
+// `next build`의 page-data 수집 단계(NEXT_PHASE=phase-production-build)에서는
+// 시크릿이 필요 없으므로 fail-fast를 건너뛴다 — db/index.ts의 빌드 가드와 동일 패턴.
+function resolveAuthSecret(): string | undefined {
+  const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
+  const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build"
+  if (!secret && process.env.NODE_ENV === "production" && !isBuildPhase) {
+    throw new Error("AUTH_SECRET (or NEXTAUTH_SECRET) is required in production")
+  }
+  return secret
+}
+
 const nextAuth = NextAuth({
   adapter: DrizzleAdapter(db),
+  secret: resolveAuthSecret(),
   providers: [
     Resend({
       apiKey: process.env.RESEND_API_KEY,
@@ -60,7 +73,9 @@ const nextAuth = NextAuth({
 
 export const { handlers, signIn, signOut } = nextAuth
 
-export const isDemoMode = (): boolean => process.env.DEMO_MODE === "true"
+// DEMO_MODE은 프로덕션에서 절대 세션을 위조하지 못하도록 NODE_ENV로 하드 가드한다.
+export const isDemoMode = (): boolean =>
+  process.env.NODE_ENV !== "production" && process.env.DEMO_MODE === "true"
 // Build-time DB unavailability is already handled by getDemoSession's try/catch.
 
 // Cached demo session — avoids hitting DB on every auth() call in demo mode.
@@ -102,6 +117,11 @@ async function getDemoSession(): Promise<Session | null> {
 /**
  * Wrapped auth() — short-circuits to a seeded admin when DEMO_MODE=true.
  * Production usage requires DEMO_MODE unset or "false".
+ *
+ * P1(resolved): the real Auth.js route is now mounted at
+ * `src/app/api/auth/[...nextauth]/route.ts` (exports `handlers`), so the Resend
+ * magic-link sign-in/callback/session endpoints work end-to-end. In production
+ * isDemoMode() is force-disabled, so nextAuth.auth() below is the only path.
  */
 export const auth = async (): Promise<Session | null> => {
   if (isDemoMode()) {

@@ -6,7 +6,7 @@ const PUBLIC_PATHS = ["/login", "/login/check-email", "/api/auth", "/api/health"
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
-  const demoMode = process.env.DEMO_MODE === "true"
+  const demoMode = process.env.NODE_ENV !== "production" && process.env.DEMO_MODE === "true"
 
   // DEMO mode: any visit to /login or / immediately bounces to /dashboard.
   // Doing this at the edge avoids any chance of static prerender serving the
